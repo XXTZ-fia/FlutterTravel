@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_travel/screens/main_screen.dart';
 import 'package:flutter_travel/services/deepseek_service.dart';
 import 'package:flutter_travel/util/preference_service.dart';
+import 'package:flutter_travel/util/travel_tags.dart';
 
 class OnboardingPage extends StatefulWidget {
   const OnboardingPage({super.key, this.isEditing = false});
@@ -18,24 +19,24 @@ class _OnboardingPageState extends State<OnboardingPage> {
   bool _saving = false;
 
   static const Map<String, IconData> _tagIcons = <String, IconData>{
-    'Beach': Icons.beach_access_outlined,
-    'Adventure': Icons.hiking_outlined,
-    'Culture': Icons.museum_outlined,
-    'Food': Icons.restaurant_outlined,
-    'Shopping': Icons.shopping_bag_outlined,
-    'Budget': Icons.savings_outlined,
+    TravelTags.nature: Icons.landscape_outlined,
+    TravelTags.culture: Icons.museum_outlined,
+    TravelTags.food: Icons.restaurant_outlined,
+    TravelTags.city: Icons.location_city_outlined,
+    TravelTags.family: Icons.park_outlined,
+    TravelTags.budget: Icons.savings_outlined,
   };
 
   static const Map<String, String> _budgetLabels = <String, String>{
-    'low': 'Budget-friendly',
-    'mid': 'Mid-range',
-    'high': 'Luxury',
+    'low': '省钱出行',
+    'mid': '舒适均衡',
+    'high': '品质享受',
   };
 
   static const Map<String, String> _budgetSubs = <String, String>{
-    'low': 'Under \$150/night',
-    'mid': '\$150–\$300/night',
-    'high': '\$300+/night',
+    'low': '偏向高性价比路线',
+    'mid': '兼顾体验与预算',
+    'high': '更在意品质和服务',
   };
 
   @override
@@ -59,7 +60,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
     if (_selectedTags.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please select at least one interest.'),
+          content: Text('请至少选择一个旅行偏好。'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -90,7 +91,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
       backgroundColor: const Color(0xFFF9FBFD),
       appBar: widget.isEditing
           ? AppBar(
-              title: const Text('Edit Preferences'),
+              title: const Text('编辑偏好'),
               elevation: 0,
               backgroundColor: const Color(0xFFF9FBFD),
             )
@@ -109,7 +110,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                 ),
                 const SizedBox(height: 20),
                 const Text(
-                  'What kind of\ntraveler are you?',
+                  '你更偏向哪种\n旅行风格？',
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.w700,

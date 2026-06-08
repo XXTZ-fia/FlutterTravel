@@ -7,7 +7,9 @@ import 'package:flutter_travel/util/preference_service.dart';
 import 'package:flutter_travel/util/recommendation_engine.dart';
 import 'package:flutter_travel/widgets/app_image.dart';
 import 'package:flutter_travel/widgets/icon_badge.dart';
+import 'package:flutter_travel/widgets/todo_sheet.dart';
 import 'package:flutter_travel/widgets/vertical_place_item.dart';
+import 'package:flutter_travel/util/travel_tags.dart';
 
 class DiscoverPage extends StatefulWidget {
   const DiscoverPage({super.key});
@@ -20,7 +22,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
   final TextEditingController _searchController = TextEditingController();
 
   String _searchQuery = '';
-  String _selectedTag = 'All';
+  String _selectedTag = TravelTags.all;
 
   List<Map<String, dynamic>> _rankedPlaces = <Map<String, dynamic>>[];
   Map<String, String> _aiTexts = <String, String>{};
@@ -94,7 +96,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
     List<Map<String, dynamic>> result =
         List<Map<String, dynamic>>.from(_rankedPlaces);
 
-    if (_selectedTag != 'All') {
+      if (_selectedTag != TravelTags.all) {
       result = result.where((Map<String, dynamic> p) {
         final List<String> tags = List<String>.from(p['tags'] as List);
         return tags.contains(_selectedTag);
@@ -116,11 +118,11 @@ class _DiscoverPageState extends State<DiscoverPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Discover'),
+        title: const Text('发现'),
         actions: <Widget>[
           IconButton(
             icon: IconBadge(icon: Icons.notifications_none),
-            onPressed: () {},
+            onPressed: () => showTodoSheet(context),
           ),
         ],
       ),
@@ -134,7 +136,9 @@ class _DiscoverPageState extends State<DiscoverPage> {
                   _buildHeader(),
                   _buildSearchBar(),
                   _buildFilterChips(),
-                  if (_preferredTags.isNotEmpty && _searchQuery.isEmpty && _selectedTag == 'All')
+                  if (_preferredTags.isNotEmpty &&
+                      _searchQuery.isEmpty &&
+                      _selectedTag == TravelTags.all)
                     _buildForYouSection(),
                   _buildAllDestinations(),
                 ],
@@ -150,12 +154,12 @@ class _DiscoverPageState extends State<DiscoverPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           const Text(
-            'Where are you\ngoing?',
+            '下一站\n想去哪里？',
             style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 6),
           Text(
-            'Personalised picks based on your travel style.',
+            '根据你的旅行偏好，为你挑选更对味的目的地。',
             style: TextStyle(
               fontSize: 14,
               color: Colors.blueGrey[600],
@@ -174,7 +178,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
         controller: _searchController,
         onChanged: (String v) => setState(() => _searchQuery = v),
         decoration: InputDecoration(
-          hintText: 'Search destinations…',
+          hintText: '搜索目的地、城市或景点…',
           prefixIcon: const Icon(Icons.search, color: Colors.blueGrey),
           filled: true,
           fillColor: const Color(0xFFF6F8FB),
@@ -197,7 +201,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
   }
 
   Widget _buildFilterChips() {
-    final List<String> chips = <String>['All', ...PreferenceService.allTags];
+    final List<String> chips = <String>[TravelTags.all, ...PreferenceService.allTags];
     return SizedBox(
       height: 52,
       child: ListView.separated(
@@ -251,7 +255,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
           child: Row(
             children: <Widget>[
               const Text(
-                'For You',
+                '为你推荐',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               ),
               const SizedBox(width: 8),
@@ -294,9 +298,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            _selectedTag == 'All'
-                ? 'All Destinations'
-                : '$_selectedTag Destinations',
+            _selectedTag == TravelTags.all ? '全部目的地' : '$_selectedTag 推荐',
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 14),
@@ -305,7 +307,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 40),
                 child: Text(
-                  'No destinations match your search.',
+                  '没有找到匹配的目的地。',
                   style: TextStyle(color: Colors.blueGrey[400]),
                 ),
               ),

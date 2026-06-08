@@ -1,19 +1,13 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_travel/util/travel_tags.dart';
 
 class PreferenceService {
   static const String _keyTags = 'pref_tags';
   static const String _keyBudget = 'pref_budget';
   static const String _keyDone = 'pref_setup_done';
 
-  static const List<String> allTags = <String>[
-    'Beach',
-    'Adventure',
-    'Culture',
-    'Food',
-    'Shopping',
-    'Budget',
-  ];
+  static const List<String> allTags = TravelTags.allTags;
 
   static Future<void> save({
     required List<String> tags,

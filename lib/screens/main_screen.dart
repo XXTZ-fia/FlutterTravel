@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_travel/screens/feedback_page.dart';
 import 'package:flutter_travel/screens/home.dart';
 import 'package:flutter_travel/screens/itinerary_page.dart';
+import 'package:flutter_travel/screens/liked_places_page.dart';
 import 'package:flutter_travel/screens/map_page.dart';
 import 'package:flutter_travel/screens/profile_page.dart';
 
@@ -13,19 +13,17 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  late final PageController _pageController;
   int _page = 0;
   late final List<Widget> _screens;
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController();
     _screens = const <Widget>[
       DiscoverPage(),
       ItineraryPage(),
       MapPage(),
-      FeedbackPage(),
+      LikedPlacesPage(),
       ProfilePage(),
     ];
   }
@@ -33,10 +31,8 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: PageView(
-        physics: NeverScrollableScrollPhysics(),
-        controller: _pageController,
-        onPageChanged: onPageChanged,
+      body: IndexedStack(
+        index: _page,
         children: _screens,
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -48,23 +44,23 @@ class _MainScreenState extends State<MainScreen> {
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(
             icon: Icon(Icons.travel_explore),
-            label: 'Discover',
+            label: '发现',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.event_note),
-            label: 'Itinerary',
+            label: '行程',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.map_outlined),
-            label: 'Map',
+            label: '地图',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.feedback_outlined),
-            label: 'Feedback',
+            icon: Icon(Icons.favorite_border),
+            label: '喜欢',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),
-            label: 'Profile',
+            label: '我的',
           ),
         ],
       ),
@@ -73,18 +69,13 @@ class _MainScreenState extends State<MainScreen> {
 
   void navigationTapped(int page) {
     FocusScope.of(context).unfocus();
-    _pageController.jumpToPage(page);
+    setState(() {
+      _page = page;
+    });
   }
 
   @override
   void dispose() {
     super.dispose();
-    _pageController.dispose();
-  }
-
-  void onPageChanged(int page) {
-    setState(() {
-      _page = page;
-    });
   }
 }

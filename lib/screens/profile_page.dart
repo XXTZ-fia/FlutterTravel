@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_travel/screens/amap_settings_page.dart';
 import 'package:flutter_travel/screens/api_settings_page.dart';
+import 'package:flutter_travel/screens/feedback_page.dart';
 import 'package:flutter_travel/screens/login_page.dart';
 import 'package:flutter_travel/screens/onboarding_page.dart';
 import 'package:flutter_travel/services/amap_key_service.dart';
@@ -82,6 +83,16 @@ class _ProfilePageState extends State<ProfilePage> {
     if (mounted) setState(() => _preferredTags = tags);
   }
 
+  Future<void> _openFeedbackCenter({bool developerMode = false}) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => FeedbackPage(
+          initialPage: developerMode ? 3 : 2,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -89,12 +100,11 @@ class _ProfilePageState extends State<ProfilePage> {
     }
 
     final bool isSocialLogin = _phone.isEmpty;
-    final String displayName =
-        isSocialLogin ? '$_provider Account' : _phone;
+    final String displayName = isSocialLogin ? '$_provider 账号' : _phone;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Profile'),
+        title: const Text('我的'),
         elevation: 0,
         automaticallyImplyLeading: false,
       ),
@@ -125,7 +135,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
-                'Signed in via $_provider',
+                '当前登录方式：$_provider',
                 style: const TextStyle(
                   color: Color(0xFF16324F),
                   fontWeight: FontWeight.w500,
@@ -139,13 +149,13 @@ class _ProfilePageState extends State<ProfilePage> {
               children: <Widget>[
                 _InfoRow(
                   icon: Icons.phone_outlined,
-                  label: 'Phone',
-                  value: _phone.isEmpty ? 'Not provided' : _phone,
+                  label: '手机号',
+                  value: _phone.isEmpty ? '未提供' : _phone,
                 ),
                 const Divider(height: 1),
                 _InfoRow(
                   icon: Icons.login_outlined,
-                  label: 'Login method',
+                  label: '登录方式',
                   value: _provider,
                 ),
               ],
@@ -157,11 +167,11 @@ class _ProfilePageState extends State<ProfilePage> {
               children: <Widget>[
                 _TappableRow(
                   icon: Icons.favorite_border,
-                  label: 'Travel Interests',
+                  label: '旅行偏好',
                   onTap: _openPreferences,
                   trailing: _preferredTags.isEmpty
                       ? Text(
-                          'Not set',
+                          '未设置',
                           style: TextStyle(
                             fontSize: 13,
                             color: Colors.orange[700],
@@ -208,6 +218,23 @@ class _ProfilePageState extends State<ProfilePage> {
             _SectionCard(
               children: <Widget>[
                 _TappableRow(
+                  icon: Icons.feedback_outlined,
+                  label: '反馈中心',
+                  onTap: () => _openFeedbackCenter(),
+                ),
+                const Divider(height: 1),
+                _TappableRow(
+                  icon: Icons.admin_panel_settings_outlined,
+                  label: '开发者收件箱',
+                  onTap: () => _openFeedbackCenter(developerMode: true),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            _SectionCard(
+              children: <Widget>[
+                _TappableRow(
                   icon: Icons.map_outlined,
                   label: '高德地图数据',
                   onTap: _openAmapSettings,
@@ -241,7 +268,7 @@ class _ProfilePageState extends State<ProfilePage> {
               children: <Widget>[
                 _TappableRow(
                   icon: Icons.auto_awesome_outlined,
-                  label: 'AI Recommendations',
+                  label: 'AI 推荐',
                   onTap: _openAiSettings,
                   trailing: Container(
                     padding: const EdgeInsets.symmetric(
@@ -253,7 +280,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      _aiConfigured ? 'Active' : 'Not set',
+                      _aiConfigured ? '已启用' : '未设置',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -273,7 +300,7 @@ class _ProfilePageState extends State<ProfilePage> {
               child: OutlinedButton.icon(
                 onPressed: _logout,
                 icon: const Icon(Icons.logout),
-                label: const Text('Logout'),
+                label: const Text('退出登录'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.red[700],
                   side: BorderSide(color: Colors.red[300]!),

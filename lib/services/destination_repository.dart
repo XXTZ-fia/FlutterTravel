@@ -6,19 +6,42 @@ import 'package:flutter_travel/services/amap_service.dart';
 import 'package:flutter_travel/services/api_key_service.dart';
 import 'package:flutter_travel/services/deepseek_service.dart';
 import 'package:flutter_travel/util/places.dart';
+import 'package:flutter_travel/util/travel_tags.dart';
 
 class DestinationRepository {
   static const String _cacheKey = 'destinations_cache';
   static const String _cacheDateKey = 'destinations_cache_date';
   static const int _cacheDays = 7;
+  static List<Map<String, dynamic>>? _memoryCache;
+
+  static Future<List<Map<String, dynamic>>> getFastDestinations() async {
+    if (_memoryCache != null && _memoryCache!.isNotEmpty) {
+      return List<Map<String, dynamic>>.from(_memoryCache!);
+    }
+    final List<Map<String, dynamic>>? cached = await _loadCache(
+      allowExpired: true,
+    );
+    if (cached != null && cached.isNotEmpty) {
+      final List<Map<String, dynamic>> normalized = _normalizePlaces(cached);
+      _memoryCache = normalized;
+      return normalized;
+    }
+    return _normalizePlaces(List<Map<String, dynamic>>.from(places));
+  }
 
   /// Returns destinations from cache, Amap, or local fallback — in that order.
   static Future<List<Map<String, dynamic>>> getDestinations() async {
     final String amapKey = await AmapKeyService.load();
-    if (amapKey.isEmpty) return List<Map<String, dynamic>>.from(places);
+    if (amapKey.isEmpty) {
+      return _normalizePlaces(List<Map<String, dynamic>>.from(places));
+    }
 
     final List<Map<String, dynamic>>? cached = await _loadCache();
-    if (cached != null && cached.isNotEmpty) return cached;
+    if (cached != null && cached.isNotEmpty) {
+      final List<Map<String, dynamic>> normalized = _normalizePlaces(cached);
+      _memoryCache = normalized;
+      return normalized;
+    }
 
     try {
       final AmapFetchConfig config = await AmapFetchConfig.load();
@@ -31,11 +54,13 @@ class DestinationRepository {
       );
       if (fetched.isNotEmpty) {
         await _saveCache(fetched);
-        return fetched;
+        final List<Map<String, dynamic>> normalized = _normalizePlaces(fetched);
+        _memoryCache = normalized;
+        return normalized;
       }
     } catch (_) {}
 
-    return List<Map<String, dynamic>>.from(places);
+    return _normalizePlaces(List<Map<String, dynamic>>.from(places));
   }
 
   /// Fetch fresh data using saved config.
@@ -75,6 +100,7 @@ class DestinationRepository {
     }
 
     await _saveCache(fetched);
+    _memoryCache = _normalizePlaces(fetched);
     return fetched.length;
   }
 
@@ -82,16 +108,18 @@ class DestinationRepository {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.remove(_cacheKey);
     await prefs.remove(_cacheDateKey);
+    _memoryCache = null;
   }
 
   /// Delete a single destination by name from cache.
   static Future<void> deleteDestination(String name) async {
-    final List<Map<String, dynamic>>? cached = await _loadCache();
+    final List<Map<String, dynamic>>? cached = await _loadCache(allowExpired: true);
     if (cached == null) return;
     final List<Map<String, dynamic>> updated = cached
         .where((Map<String, dynamic> p) => p['name'] != name)
         .toList();
     await _saveCache(updated);
+    _memoryCache = updated;
   }
 
   static Future<bool> get hasCachedData async {
@@ -117,13 +145,15 @@ class DestinationRepository {
     return DateTime.fromMillisecondsSinceEpoch(ms);
   }
 
-  static Future<List<Map<String, dynamic>>?> _loadCache() async {
+  static Future<List<Map<String, dynamic>>?> _loadCache({
+    bool allowExpired = false,
+  }) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final int? savedMs = prefs.getInt(_cacheDateKey);
     if (savedMs == null) return null;
 
     final DateTime savedDate = DateTime.fromMillisecondsSinceEpoch(savedMs);
-    if (DateTime.now().difference(savedDate).inDays >= _cacheDays) {
+    if (!allowExpired && DateTime.now().difference(savedDate).inDays >= _cacheDays) {
       return null;
     }
 
@@ -147,5 +177,37 @@ class DestinationRepository {
       _cacheDateKey,
       DateTime.now().millisecondsSinceEpoch,
     );
+  }
+
+  static List<Map<String, dynamic>> _normalizePlaces(
+    List<Map<String, dynamic>> data,
+  ) {
+    return data.map((Map<String, dynamic> place) {
+      final Map<String, dynamic> normalized = Map<String, dynamic>.from(place);
+      final List<dynamic> tags = normalized['tags'] as List<dynamic>? ?? <dynamic>[];
+      normalized['tags'] = tags.map((dynamic tag) => _normalizeTag('$tag')).toSet().toList();
+      return normalized;
+    }).toList();
+  }
+
+  static String _normalizeTag(String tag) {
+    switch (tag) {
+      case 'Beach':
+      case 'Adventure':
+        return TravelTags.nature;
+      case 'Culture':
+        return TravelTags.culture;
+      case 'Food':
+        return TravelTags.food;
+      case 'Shopping':
+        return TravelTags.city;
+      case 'Family':
+      case 'ThemePark':
+        return TravelTags.family;
+      case 'Budget':
+        return TravelTags.budget;
+      default:
+        return tag;
+    }
   }
 }

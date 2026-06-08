@@ -21,7 +21,7 @@ class DeepSeekService {
       final Map<String, String> cached = <String, String>{};
       for (final Map<String, dynamic> place in topPlaces) {
         final String name = place['name'] as String;
-        final String? text = prefs.getString('$_cachePrefix$name');
+        final String? text = _sanitizeText(prefs.getString('$_cachePrefix$name'));
         if (text != null) cached[name] = text;
       }
       if (cached.length == topPlaces.length) return cached;
@@ -42,9 +42,10 @@ class DeepSeekService {
       try {
         final String? text =
             await _call(apiKey: apiKey, prompt: prompt, maxTokens: 120);
-        if (text != null) {
-          results[name] = text.trim();
-          await prefs.setString('$_cachePrefix$name', text.trim());
+        final String? clean = _sanitizeText(text);
+        if (clean != null) {
+          results[name] = clean;
+          await prefs.setString('$_cachePrefix$name', clean);
         }
       } catch (_) {}
     }
@@ -86,17 +87,21 @@ class DeepSeekService {
           final String name = p['name'] as String;
           final Map<String, String>? data = enriched[name];
           if (data == null) continue;
-          if (data['details']?.isNotEmpty ?? false) {
-            p['details'] = data['details'];
+          final String? details = _sanitizeText(data['details']);
+          if (details != null && details.isNotEmpty) {
+            p['details'] = details;
           }
-          if (data['duration']?.isNotEmpty ?? false) {
-            p['duration'] = data['duration'];
+          final String? duration = _sanitizeText(data['duration']);
+          if (duration != null && duration.isNotEmpty) {
+            p['duration'] = duration;
           }
-          if (data['budget']?.isNotEmpty ?? false) {
-            p['budget'] = data['budget'];
+          final String? budget = _sanitizeText(data['budget']);
+          if (budget != null && budget.isNotEmpty) {
+            p['budget'] = budget;
           }
-          if (data['stay']?.isNotEmpty ?? false) {
-            p['price'] = data['stay'];
+          final String? stay = _sanitizeText(data['stay']);
+          if (stay != null && stay.isNotEmpty) {
+            p['price'] = stay;
           }
         }
       } catch (_) {}
@@ -148,7 +153,10 @@ class DeepSeekService {
             Map<String, dynamic>.from(v as Map);
         return MapEntry(
           k,
-          obj.map((String fk, dynamic fv) => MapEntry(fk, fv.toString())),
+          obj.map(
+            (String fk, dynamic fv) =>
+                MapEntry(fk, _sanitizeText(fv?.toString()) ?? ''),
+          ),
         );
       });
     } catch (_) {
@@ -181,11 +189,13 @@ class DeepSeekService {
 
     if (response.statusCode == 200) {
       final Map<String, dynamic> body =
-          jsonDecode(response.body) as Map<String, dynamic>;
+          jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
       final List<dynamic> choices = body['choices'] as List<dynamic>;
       if (choices.isNotEmpty) {
-        return (choices.first['message'] as Map<String, dynamic>)['content']
-            as String?;
+        return _sanitizeText(
+          (choices.first['message'] as Map<String, dynamic>)['content']
+              as String?,
+        );
       }
     }
     return null;
@@ -202,7 +212,7 @@ class DeepSeekService {
 
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final String cacheKey = 'place_desc_$name';
-    final String? cached = prefs.getString(cacheKey);
+    final String? cached = _sanitizeText(prefs.getString(cacheKey));
     if (cached != null && cached.isNotEmpty) return cached;
 
     final String location = place['location'] as String? ?? '';
@@ -217,11 +227,28 @@ class DeepSeekService {
 
     final String? text =
         await _call(apiKey: apiKey, prompt: prompt, maxTokens: 220);
-    if (text != null && text.trim().isNotEmpty) {
-      await prefs.setString(cacheKey, text.trim());
-      return text.trim();
+    final String? clean = _sanitizeText(text);
+    if (clean != null && clean.isNotEmpty) {
+      await prefs.setString(cacheKey, clean);
+      return clean;
     }
     return null;
+  }
+
+  static String? _sanitizeText(String? text) {
+    if (text == null) return null;
+    String value = text
+        .replaceAll('\r', '')
+        .replaceAll('�', '')
+        .replaceAll(RegExp(r'[\x00-\x08\x0B\x0C\x0E-\x1F]'), '')
+        .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+        .trim();
+    if (value.isEmpty) return null;
+    final int weirdCount = RegExp(r'[^\u0000-\u007F\u4E00-\u9FFF\u3000-\u303F\uFF00-\uFFEF，。！？；：“”‘’（）【】、《》…\-—/\s¥0-9a-zA-Z]').allMatches(value).length;
+    if (weirdCount > value.length ~/ 6) {
+      return null;
+    }
+    return value;
   }
 
   static Future<void> clearCache() async {

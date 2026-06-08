@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_travel/screens/map_page.dart';
 import 'package:flutter_travel/services/api_key_service.dart';
 import 'package:flutter_travel/services/deepseek_service.dart';
 import 'package:flutter_travel/services/destination_repository.dart';
 import 'package:flutter_travel/util/history_service.dart';
 import 'package:flutter_travel/widgets/app_image.dart';
 import 'package:flutter_travel/widgets/icon_badge.dart';
+import 'package:flutter_travel/widgets/schedule_add_sheet.dart';
 
 class Details extends StatefulWidget {
   const Details({super.key, required this.place});
@@ -75,6 +77,24 @@ class _DetailsState extends State<Details> {
     if (mounted) setState(() => _isLiked = !_isLiked);
   }
 
+  Future<void> _addToSchedule() async {
+    final bool added = await showAddToScheduleSheet(context, widget.place);
+    if (!mounted || !added) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已将「${widget.place['name']}」加入行程')),
+    );
+  }
+
+  Future<void> _openOnMap() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MapPage(
+          initialSelectedPlace: Map<String, dynamic>.from(widget.place),
+        ),
+      ),
+    );
+  }
+
   List<Map<String, dynamic>> get _similarPlaces {
     final List<String> currentTags =
         List<String>.from(widget.place['tags'] as List);
@@ -101,7 +121,7 @@ class _DetailsState extends State<Details> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Destination Details'),
+        title: const Text('目的地详情'),
         actions: <Widget>[
           IconButton(
             icon: IconBadge(icon: Icons.notifications_none),
@@ -168,18 +188,39 @@ class _DetailsState extends State<Details> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: <Widget>[
+                    ActionChip(
+                      avatar: const Icon(
+                        Icons.map_outlined,
+                        size: 18,
+                        color: Color(0xFF16324F),
+                      ),
+                      label: const Text('地图位置'),
+                      backgroundColor: const Color(0xFFEAF1F7),
+                      labelStyle: const TextStyle(
+                        color: Color(0xFF16324F),
+                        fontWeight: FontWeight.w700,
+                      ),
+                      onPressed: _openOnMap,
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 20),
                 Row(
                   children: <Widget>[
                     _InfoCard(
                       icon: Icons.star_rounded,
-                      label: 'Rating',
+                      label: '评分',
                       value: '${widget.place["rating"]}',
                     ),
                     const SizedBox(width: 12),
                     _InfoCard(
                       icon: Icons.account_balance_wallet_outlined,
-                      label: 'Budget',
+                      label: '预算',
                       value: '${widget.place["budget"]}',
                     ),
                   ],
@@ -189,20 +230,20 @@ class _DetailsState extends State<Details> {
                   children: <Widget>[
                     _InfoCard(
                       icon: Icons.schedule,
-                      label: 'Duration',
+                      label: '建议时长',
                       value: '${widget.place["duration"]}',
                     ),
                     const SizedBox(width: 12),
                     _InfoCard(
                       icon: Icons.hotel_outlined,
-                      label: 'Stay',
+                      label: '住宿参考',
                       value: '${widget.place["price"]}',
                     ),
                   ],
                 ),
                 const SizedBox(height: 28),
                 const Text(
-                  'Tags',
+                  '分类标签',
                   style: TextStyle(
                       fontWeight: FontWeight.bold, fontSize: 16),
                 ),
@@ -234,7 +275,7 @@ class _DetailsState extends State<Details> {
                 Row(
                   children: <Widget>[
                     const Text(
-                      'Description',
+                      '景点介绍',
                       style: TextStyle(
                           fontWeight: FontWeight.bold, fontSize: 16),
                     ),
@@ -254,6 +295,37 @@ class _DetailsState extends State<Details> {
                   style: const TextStyle(fontSize: 15, height: 1.5),
                 ),
                 const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _addToSchedule,
+                    icon: const Icon(Icons.event_available_outlined),
+                    label: const Text('加入行程'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF16324F),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                OutlinedButton.icon(
+                  onPressed: _loadAiDescription,
+                  icon: const Icon(Icons.auto_awesome_outlined),
+                  label: const Text('AI 分析地址和可玩点'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 48),
+                    foregroundColor: const Color(0xFF16324F),
+                    side: const BorderSide(color: Color(0xFF16324F)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
                 _buildSimilarPlaces(context),
                 const SizedBox(height: 24),
               ],
@@ -284,7 +356,7 @@ class _DetailsState extends State<Details> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         const Text(
-          'You might also like',
+          '你也许会喜欢',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
         const SizedBox(height: 14),

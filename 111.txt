@@ -1,0 +1,1 @@
+flutter emulators --launch Pixel_3a_API_34
