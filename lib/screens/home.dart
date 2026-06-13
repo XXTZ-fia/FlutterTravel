@@ -335,6 +335,8 @@ class _ForYouCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final List<String> reasons =
+        List<String>.from(place['recommendationReasons'] as List? ?? <String>[]);
     return GestureDetector(
       onTap: () {
         final Map<String, dynamic> enriched =
@@ -428,6 +430,30 @@ class _ForYouCard extends StatelessWidget {
                 ),
                 maxLines: 4,
                 overflow: TextOverflow.ellipsis,
+              ),
+            ],
+            if (reasons.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: reasons.take(2).map((String reason) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F1F8),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      reason,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF16324F),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  );
+                }).toList(),
               ),
             ],
           ],

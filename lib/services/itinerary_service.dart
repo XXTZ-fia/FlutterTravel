@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter_travel/util/user_scope.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ItineraryService {
@@ -7,7 +8,8 @@ class ItineraryService {
 
   static Future<List<Map<String, dynamic>>> getAll() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? raw = prefs.getString(_key);
+    final String key = await UserScope.key(_key);
+    final String? raw = prefs.getString(key);
     if (raw == null) return <Map<String, dynamic>>[];
 
     final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
@@ -18,7 +20,8 @@ class ItineraryService {
 
   static Future<void> _saveAll(List<Map<String, dynamic>> list) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_key, jsonEncode(list));
+    final String key = await UserScope.key(_key);
+    await prefs.setString(key, jsonEncode(list));
   }
 
   static Future<String> create({

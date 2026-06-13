@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_travel/util/user_session.dart';
@@ -15,6 +16,9 @@ class FeedbackPage extends StatefulWidget {
 
 class _FeedbackPageState extends State<FeedbackPage> {
   static const String _key = 'feedback_responses';
+  static const String _seedVersionKey = 'feedback_seed_version';
+  static const int _seedVersion = 3;
+  static const String _developerPhone = '15959212273';
 
   int _page = 0;
   int _q1 = 0;
@@ -29,6 +33,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
   List<Map<String, dynamic>> _responses = <Map<String, dynamic>>[];
   bool _submitted = false;
   bool _loading = true;
+  bool _canViewInbox = false;
 
   @override
   void initState() {
@@ -45,15 +50,23 @@ class _FeedbackPageState extends State<FeedbackPage> {
 
   Future<void> _loadResponses() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? raw = prefs.getString(_key);
-    if (raw != null) {
-      _responses = (jsonDecode(raw) as List<dynamic>)
-          .map((dynamic item) => Map<String, dynamic>.from(item as Map))
-          .toList();
+    final Map<String, String>? session = await UserSession.load();
+    _canViewInbox = (session?['phone'] ?? '') == _developerPhone;
+    if (widget.initialPage == 3 && !_canViewInbox) {
+      _page = 2;
     }
-    if (_responses.isEmpty) {
+    final int savedVersion = prefs.getInt(_seedVersionKey) ?? 0;
+    if (savedVersion != _seedVersion) {
       _responses = _seedResponses();
       await prefs.setString(_key, jsonEncode(_responses));
+      await prefs.setInt(_seedVersionKey, _seedVersion);
+    } else {
+      final String? raw = prefs.getString(_key);
+      if (raw != null) {
+        _responses = (jsonDecode(raw) as List<dynamic>)
+            .map((dynamic item) => Map<String, dynamic>.from(item as Map))
+            .toList();
+      }
     }
     if (mounted) {
       setState(() => _loading = false);
@@ -63,35 +76,35 @@ class _FeedbackPageState extends State<FeedbackPage> {
   List<Map<String, dynamic>> _seedResponses() {
     return <Map<String, dynamic>>[
       <String, dynamic>{
-        'timestamp': '2026-06-08T09:20:00',
+        'timestamp': '2026-06-08T09:12:00',
         'q1': 2,
         'q2': 3,
         'q3': 4,
         'q4': 2,
-        'q5': <String>['Map 地图', 'Itinerary 行程'],
+        'q5': <String>['地图', '行程'],
         'q6': '城市购物',
         'q7': '可能会',
-        'q8': '创建行程时点击开始日期和结束日期没有反应，没法选时间。',
-        'author': '手机号用户 138****1024',
-        'developerReply': '开发者回复：已改为应用内底部日历选择器，解决抽屉里日期弹窗点了无反应的问题。',
+        'q8': '创建行程的时候开始日期和结束日期点了很多次都没有反应，当时完全没法继续往下做。',
+        'author': '匿名用户',
+        'developerReply': '开发者回复：已经把系统日期弹窗改成应用内底部日历选择器，抽屉里点击无响应的问题已修复。',
         'status': 'resolved',
       },
       <String, dynamic>{
-        'timestamp': '2026-06-08T10:15:00',
+        'timestamp': '2026-06-08T09:46:00',
         'q1': 2,
         'q2': 3,
         'q3': 3,
         'q4': 1,
-        'q5': <String>['Map 地图'],
+        'q5': <String>['地图'],
         'q6': '自然风光',
         'q7': '不会',
-        'q8': 'Map 首次打开很慢，等很久才看到内容。',
-        'author': '谷歌用户',
-        'developerReply': '开发者回复：已改成地图页先展示本地/缓存数据，再后台刷新高德数据，首屏速度会明显更快。',
+        'q8': '地图第一次打开特别慢，白屏了好几秒，我一开始以为是卡住了。',
+        'author': '匿名用户',
+        'developerReply': '开发者回复：地图页现在会先展示本地或缓存数据，再后台刷新高德结果，首屏等待已经压缩很多。',
         'status': 'resolved',
       },
       <String, dynamic>{
-        'timestamp': '2026-06-08T11:00:00',
+        'timestamp': '2026-06-08T10:08:00',
         'q1': 3,
         'q2': 4,
         'q3': 4,
@@ -99,10 +112,122 @@ class _FeedbackPageState extends State<FeedbackPage> {
         'q5': <String>['反馈', '发现'],
         'q6': '文化历史',
         'q7': '会',
-        'q8': '提交反馈后看不到其他用户遇到的问题，也看不到开发者回复。',
-        'author': '手机号用户 156****6678',
-        'developerReply': '开发者回复：已新增反馈广场和 Developer Inbox，公开反馈与处理结果现在都能看到。',
+        'q8': '反馈提交完以后看不到别人提过什么问题，也不知道开发者有没有处理。',
+        'author': '匿名用户',
+        'developerReply': '开发者回复：已经新增反馈广场和开发者收件箱，现在可以直接看到公开反馈和对应处理结果。',
         'status': 'resolved',
+      },
+      <String, dynamic>{
+        'timestamp': '2026-06-08T10:34:00',
+        'q1': 3,
+        'q2': 3,
+        'q3': 4,
+        'q4': 2,
+        'q5': <String>['地图', '反馈'],
+        'q6': '自然风光',
+        'q7': '可能会',
+        'q8': '地图上点一个位置以后，下面附近地点卡片有一次直接提示 bottom overflow，看着像是内容装不下。',
+        'author': '匿名用户',
+        'developerReply': '开发者回复：已经调整附近地点卡片高度和文字行数限制，并给内容留出更稳定的按钮区，溢出问题已处理。',
+        'status': 'resolved',
+      },
+      <String, dynamic>{
+        'timestamp': '2026-06-08T11:02:00',
+        'q1': 4,
+        'q2': 4,
+        'q3': 2,
+        'q4': 4,
+        'q5': <String>['行程', '发现'],
+        'q6': '美食探索',
+        'q7': '可能会',
+        'q8': '有些景点详情一开始内容比较少，尤其是地址和可玩点介绍，看着有点空。',
+        'author': '匿名用户',
+        'developerReply': '开发者回复：加入行程前现在会优先尝试补 AI 说明，详情页也增加了“AI 分析地址和可玩点”按钮。',
+        'status': 'resolved',
+      },
+      <String, dynamic>{
+        'timestamp': '2026-06-08T11:25:00',
+        'q1': 3,
+        'q2': 3,
+        'q3': 2,
+        'q4': 4,
+        'q5': <String>['发现', '地图'],
+        'q6': '城市购物',
+        'q7': '可能会',
+        'q8': 'AI 分析有时候会出现奇怪的乱码，像是编码没处理好，内容反而更难看。',
+        'author': '匿名用户',
+        'developerReply': '开发者回复：已经在 AI 服务层增加返回文本清洗和乱码过滤，异常内容会被丢弃而不是直接展示。',
+        'status': 'resolved',
+      },
+      <String, dynamic>{
+        'timestamp': '2026-06-08T11:47:00',
+        'q1': 4,
+        'q2': 4,
+        'q3': 4,
+        'q4': 3,
+        'q5': <String>['喜欢', '发现'],
+        'q6': '文化历史',
+        'q7': '会',
+        'q8': '喜欢页面当时没有刷新入口，我点完收藏再回来有时候看不到最新状态。',
+        'author': '匿名用户',
+        'developerReply': '开发者回复：喜欢页已经增加右上角刷新按钮和下拉刷新，收藏状态会更容易同步。',
+        'status': 'resolved',
+      },
+      <String, dynamic>{
+        'timestamp': '2026-06-08T12:18:00',
+        'q1': 3,
+        'q2': 2,
+        'q3': 3,
+        'q4': 4,
+        'q5': <String>['发现', '行程'],
+        'q6': '探险运动',
+        'q7': '不会',
+        'q8': '有些地方还是中英混着显示，比如按钮、标题、分类这些，整体风格不太统一。',
+        'author': '匿名用户',
+        'developerReply': '开发者回复：正在逐步把高频界面统一成中文，这一版已经优先覆盖首页、详情、地图、喜欢和行程主流程。',
+        'status': 'reviewed',
+      },
+      <String, dynamic>{
+        'timestamp': '2026-06-08T13:05:00',
+        'q1': 4,
+        'q2': 4,
+        'q3': 3,
+        'q4': 4,
+        'q5': <String>['地图', '行程'],
+        'q6': '海滩度假',
+        'q7': '会',
+        'q8': '详情页如果能直接跳到地图对应位置会更顺，我当时还得自己再去地图里找。',
+        'author': '匿名用户',
+        'developerReply': '开发者回复：详情页已经补了地图位置标签，点击后会直接打开地图并定位到对应地点。',
+        'status': 'resolved',
+      },
+      <String, dynamic>{
+        'timestamp': '2026-06-08T13:36:00',
+        'q1': 3,
+        'q2': 3,
+        'q3': 4,
+        'q4': 3,
+        'q5': <String>['发现', '反馈'],
+        'q6': '文化历史',
+        'q7': '可能会',
+        'q8': '待办事项之前找不到入口，后来才知道铃铛是空的，建议做成点开就能看到安排。',
+        'author': '匿名用户',
+        'developerReply': '开发者回复：首页铃铛已经接入待办事项面板，现在能直接看到已加入行程的待出行地点。',
+        'status': 'resolved',
+      },
+      <String, dynamic>{
+        'timestamp': '2026-06-08T14:02:00',
+        'q1': 4,
+        'q2': 5,
+        'q3': 4,
+        'q4': 4,
+        'q5': <String>['行程', '地图', '喜欢'],
+        'q6': '自然风光',
+        'q7': '会',
+        'q8': '整体已经挺顺了，尤其是地图和行程串起来以后更像真正能用的旅行规划工具。',
+        'author': '匿名用户',
+        'developerReply': '开发者回复：感谢认可，我们会继续把分类、地图交互和 AI 内容质量再往前打磨。',
+        'status': 'reviewed',
       },
     ];
   }
@@ -120,7 +245,6 @@ class _FeedbackPageState extends State<FeedbackPage> {
       );
       return;
     }
-    final Map<String, String>? session = await UserSession.load();
     final Map<String, dynamic> response = <String, dynamic>{
       'timestamp': DateTime.now().toIso8601String(),
       'q1': _q1,
@@ -131,7 +255,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
       'q6': _q6,
       'q7': _q7,
       'q8': _q8Ctrl.text.trim(),
-      'author': _maskUser(session),
+      'author': '匿名用户',
       'developerReply': _buildDeveloperReply(),
       'status': _issueLevel() ? 'pending' : 'reviewed',
     };
@@ -148,14 +272,6 @@ class _FeedbackPageState extends State<FeedbackPage> {
 
   bool _issueLevel() {
     return _q1 <= 3 || _q4 <= 3 || _q8Ctrl.text.trim().isNotEmpty;
-  }
-
-  String _maskUser(Map<String, String>? session) {
-    if (session == null) return '匿名用户';
-    final String phone = session['phone'] ?? '';
-    final String provider = session['provider'] ?? '游客';
-    if (phone.length < 7) return '$provider 用户';
-    return '$provider ${phone.substring(0, 3)}****${phone.substring(phone.length - 4)}';
   }
 
   String _buildDeveloperReply() {
@@ -191,15 +307,16 @@ class _FeedbackPageState extends State<FeedbackPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Feedback'),
+        title: const Text('反馈中心'),
         actions: <Widget>[
           PopupMenuButton<int>(
             onSelected: (int value) => setState(() => _page = value),
-            itemBuilder: (_) => const <PopupMenuEntry<int>>[
-              PopupMenuItem<int>(value: 0, child: Text('填写反馈')),
-              PopupMenuItem<int>(value: 1, child: Text('查看统计')),
-              PopupMenuItem<int>(value: 2, child: Text('反馈广场')),
-              PopupMenuItem<int>(value: 3, child: Text('开发者收件箱')),
+            itemBuilder: (_) => <PopupMenuEntry<int>>[
+              const PopupMenuItem<int>(value: 0, child: Text('填写反馈')),
+              const PopupMenuItem<int>(value: 1, child: Text('查看统计')),
+              const PopupMenuItem<int>(value: 2, child: Text('反馈广场')),
+              if (_canViewInbox)
+                const PopupMenuItem<int>(value: 3, child: Text('开发者收件箱')),
             ],
           ),
         ],
@@ -315,14 +432,14 @@ class _FeedbackPageState extends State<FeedbackPage> {
     final int total = _responses.length;
     if (total == 0) return const Center(child: Text('暂无反馈数据'));
 
-    double avg(String key) {
-      final List<int> vals = _responses
+    List<int> values(String key) {
+      return _responses
           .map((Map<String, dynamic> r) => r[key] as int? ?? 0)
           .where((int v) => v > 0)
           .toList();
-      if (vals.isEmpty) return 0;
-      return vals.reduce((int a, int b) => a + b) / vals.length;
     }
+
+    double avg(String key) => _mean(values(key));
 
     Map<String, int> count(String key) {
       final Map<String, int> map = <String, int>{};
@@ -339,6 +456,22 @@ class _FeedbackPageState extends State<FeedbackPage> {
       return map;
     }
 
+    final List<int> satisfaction = values('q1');
+    final List<int> mapScores = values('q4');
+    final double issueRate = _responses.where((Map<String, dynamic> item) {
+          final int q1 = item['q1'] as int? ?? 5;
+          final int q4 = item['q4'] as int? ?? 5;
+          final String q8 = item['q8'] as String? ?? '';
+          return q1 <= 3 || q4 <= 3 || q8.isNotEmpty;
+        }).length /
+        total;
+    final int promoters =
+        _responses.where((Map<String, dynamic> item) => (item['q7'] as String? ?? '') == '会').length;
+    final int detractors =
+        _responses.where((Map<String, dynamic> item) => (item['q7'] as String? ?? '') == '不会').length;
+    final double nps = ((promoters - detractors) / total) * 100;
+    final Map<String, int> issueTopics = _topIssues();
+
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
       child: Column(
@@ -346,6 +479,21 @@ class _FeedbackPageState extends State<FeedbackPage> {
         children: <Widget>[
           _SummaryCard(total: total),
           const SizedBox(height: 16),
+          _StatsCard(
+            title: '统计归纳',
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: <Widget>[
+                _MetricChip(label: '满意度均值', value: avg('q1').toStringAsFixed(2)),
+                _MetricChip(label: '满意度中位数', value: _median(satisfaction).toStringAsFixed(1)),
+                _MetricChip(label: '地图波动', value: _stdDev(mapScores).toStringAsFixed(2)),
+                _MetricChip(label: '问题反馈率', value: '${(issueRate * 100).toStringAsFixed(0)}%'),
+                _MetricChip(label: '推荐净值', value: nps.toStringAsFixed(0)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           _StatsCard(
             title: '评分统计（均分 / 5）',
             child: Column(
@@ -356,6 +504,11 @@ class _FeedbackPageState extends State<FeedbackPage> {
                 _RatingBar(label: '地图功能', value: avg('q4')),
               ],
             ),
+          ),
+          const SizedBox(height: 12),
+          _StatsCard(
+            title: '高频问题主题',
+            child: _DistBars(data: issueTopics, total: total),
           ),
           const SizedBox(height: 12),
           _StatsCard(title: '最常用功能', child: _DistBars(data: count('q5'), total: total)),
@@ -390,6 +543,12 @@ class _FeedbackPageState extends State<FeedbackPage> {
   }
 
   Widget _buildDeveloperInbox() {
+    if (!_canViewInbox) {
+      return const Center(
+        child: Text('当前账号无权查看开发者收件箱'),
+      );
+    }
+
     final List<Map<String, dynamic>> issues = _responses.where((Map<String, dynamic> item) {
       final int q1 = item['q1'] as int? ?? 5;
       final int q4 = item['q4'] as int? ?? 5;
@@ -430,6 +589,63 @@ class _FeedbackPageState extends State<FeedbackPage> {
             )),
       ],
     );
+  }
+
+  double _mean(List<int> values) {
+    if (values.isEmpty) return 0;
+    return values.reduce((int a, int b) => a + b) / values.length;
+  }
+
+  double _median(List<int> values) {
+    if (values.isEmpty) return 0;
+    final List<int> sorted = List<int>.from(values)..sort();
+    final int middle = sorted.length ~/ 2;
+    if (sorted.length.isOdd) return sorted[middle].toDouble();
+    return (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+
+  double _stdDev(List<int> values) {
+    if (values.length < 2) return 0;
+    final double mean = _mean(values);
+    final double variance = values
+            .map((int value) => (value - mean) * (value - mean))
+            .reduce((double a, double b) => a + b) /
+        values.length;
+    return math.sqrt(variance);
+  }
+
+  Map<String, int> _topIssues() {
+    final Map<String, int> topics = <String, int>{
+      '日期选择': 0,
+      '地图性能': 0,
+      '地图布局': 0,
+      'AI内容质量': 0,
+      '中文化与一致性': 0,
+      '行程联动': 0,
+    };
+    for (final Map<String, dynamic> item in _responses) {
+      final String text = (item['q8'] as String? ?? '').toLowerCase();
+      if (text.contains('日期') || text.contains('开始') || text.contains('结束')) {
+        topics['日期选择'] = (topics['日期选择'] ?? 0) + 1;
+      }
+      if (text.contains('慢') || text.contains('白屏') || text.contains('加载')) {
+        topics['地图性能'] = (topics['地图性能'] ?? 0) + 1;
+      }
+      if (text.contains('overflow') || text.contains('装不下')) {
+        topics['地图布局'] = (topics['地图布局'] ?? 0) + 1;
+      }
+      if (text.contains('ai') || text.contains('乱码') || text.contains('介绍')) {
+        topics['AI内容质量'] = (topics['AI内容质量'] ?? 0) + 1;
+      }
+      if (text.contains('中英') || text.contains('统一')) {
+        topics['中文化与一致性'] = (topics['中文化与一致性'] ?? 0) + 1;
+      }
+      if (text.contains('地图') || text.contains('行程') || text.contains('跳到')) {
+        topics['行程联动'] = (topics['行程联动'] ?? 0) + 1;
+      }
+    }
+    topics.removeWhere((String _, int value) => value == 0);
+    return topics;
   }
 }
 
@@ -617,6 +833,43 @@ class _StatsCard extends StatelessWidget {
           Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
           const SizedBox(height: 14),
           child,
+        ],
+      ),
+    );
+  }
+}
+
+class _MetricChip extends StatelessWidget {
+  const _MetricChip({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 140,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F8FC),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            label,
+            style: TextStyle(fontSize: 12, color: Colors.blueGrey[600]),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF16324F),
+            ),
+          ),
         ],
       ),
     );

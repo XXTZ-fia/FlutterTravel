@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_travel/util/travel_tags.dart';
+import 'package:flutter_travel/util/user_scope.dart';
 
 class PreferenceService {
   static const String _keyTags = 'pref_tags';
@@ -14,32 +15,41 @@ class PreferenceService {
     required String budget,
   }) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyTags, jsonEncode(tags));
-    await prefs.setString(_keyBudget, budget);
-    await prefs.setBool(_keyDone, true);
+    final String tagsKey = await UserScope.key(_keyTags);
+    final String budgetKey = await UserScope.key(_keyBudget);
+    final String doneKey = await UserScope.key(_keyDone);
+    await prefs.setString(tagsKey, jsonEncode(tags));
+    await prefs.setString(budgetKey, budget);
+    await prefs.setBool(doneKey, true);
   }
 
   static Future<List<String>> getTags() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? raw = prefs.getString(_keyTags);
+    final String key = await UserScope.key(_keyTags);
+    final String? raw = prefs.getString(key);
     if (raw == null) return <String>[];
     return List<String>.from(jsonDecode(raw) as List);
   }
 
   static Future<String> getBudget() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyBudget) ?? 'mid';
+    final String key = await UserScope.key(_keyBudget);
+    return prefs.getString(key) ?? 'mid';
   }
 
   static Future<bool> get isSetupDone async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_keyDone) ?? false;
+    final String key = await UserScope.key(_keyDone);
+    return prefs.getBool(key) ?? false;
   }
 
   static Future<void> clear() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_keyTags);
-    await prefs.remove(_keyBudget);
-    await prefs.remove(_keyDone);
+    final String tagsKey = await UserScope.key(_keyTags);
+    final String budgetKey = await UserScope.key(_keyBudget);
+    final String doneKey = await UserScope.key(_keyDone);
+    await prefs.remove(tagsKey);
+    await prefs.remove(budgetKey);
+    await prefs.remove(doneKey);
   }
 }

@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class UserSession {
   static const String _keyPhone = 'user_phone';
   static const String _keyProvider = 'user_provider';
+  static const String _developerPhone = '15959212273';
 
   static Future<void> save(String phone, String provider) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -27,5 +28,19 @@ class UserSession {
   static Future<bool> get isLoggedIn async {
     final Map<String, String>? session = await load();
     return session != null;
+  }
+
+  static Future<String> currentUserId() async {
+    final Map<String, String>? session = await load();
+    final String phone = session?['phone'] ?? '';
+    final String provider = session?['provider'] ?? 'guest';
+    final String raw = phone.isNotEmpty ? phone : provider;
+    final String sanitized = raw.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+    return sanitized.isEmpty ? 'guest' : sanitized;
+  }
+
+  static Future<bool> get isDeveloper async {
+    final Map<String, String>? session = await load();
+    return (session?['phone'] ?? '') == _developerPhone;
   }
 }

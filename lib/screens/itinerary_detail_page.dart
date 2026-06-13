@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_travel/screens/details.dart';
 import 'package:flutter_travel/services/destination_repository.dart';
 import 'package:flutter_travel/services/itinerary_service.dart';
+import 'package:flutter_travel/util/history_service.dart';
 import 'package:flutter_travel/widgets/app_image.dart';
 import 'package:flutter_travel/widgets/app_date_picker_sheet.dart';
 
@@ -16,6 +17,7 @@ class ItineraryDetailPage extends StatefulWidget {
 
 class _ItineraryDetailPageState extends State<ItineraryDetailPage> {
   late Map<String, dynamic> _itinerary;
+  List<String> _likedNames = <String>[];
 
   @override
   void initState() {
@@ -23,6 +25,7 @@ class _ItineraryDetailPageState extends State<ItineraryDetailPage> {
     _itinerary = Map<String, dynamic>.from(widget.itinerary);
     _itinerary['places'] =
         List<dynamic>.from(_itinerary['places'] as List<dynamic>? ?? <dynamic>[]);
+    _loadLikedNames();
   }
 
   List<Map<String, dynamic>> get _places =>
@@ -30,13 +33,23 @@ class _ItineraryDetailPageState extends State<ItineraryDetailPage> {
 
   Future<void> _reload() async {
     final List<Map<String, dynamic>> all = await ItineraryService.getAll();
+    final List<String> likedNames = await HistoryService.getLiked();
     for (final Map<String, dynamic> item in all) {
       if (item['id'] == _itinerary['id']) {
         if (!mounted) return;
-        setState(() => _itinerary = item);
+        setState(() {
+          _itinerary = item;
+          _likedNames = likedNames;
+        });
         return;
       }
     }
+  }
+
+  Future<void> _loadLikedNames() async {
+    final List<String> likedNames = await HistoryService.getLiked();
+    if (!mounted) return;
+    setState(() => _likedNames = likedNames);
   }
 
   Future<void> _addPlace() async {
@@ -70,6 +83,13 @@ class _ItineraryDetailPageState extends State<ItineraryDetailPage> {
   Future<void> _removePlace(String pid) async {
     await ItineraryService.removePlace(_itinerary['id'] as String, pid);
     _reload();
+  }
+
+  Future<void> _toggleLike(Map<String, dynamic> place) async {
+    final String name = place['name'] as String? ?? '';
+    if (name.isEmpty) return;
+    await HistoryService.toggleLike(name);
+    await _loadLikedNames();
   }
 
   List<_DateSectionData> get _sections {
@@ -156,12 +176,14 @@ class _ItineraryDetailPageState extends State<ItineraryDetailPage> {
             label: section.label,
             places: section.places,
             onDelete: _removePlace,
+            likedNames: _likedNames,
+            onLike: _toggleLike,
             onTap: (Map<String, dynamic> place) => Navigator.push<void>(
               context,
               MaterialPageRoute<void>(
                 builder: (_) => Details(place: Map<String, dynamic>.from(place)),
               ),
-            ),
+            ).then((_) => _loadLikedNames()),
           ),
         ),
       ],
@@ -256,12 +278,16 @@ class _DateSection extends StatelessWidget {
     required this.label,
     required this.places,
     required this.onDelete,
+    required this.likedNames,
+    required this.onLike,
     required this.onTap,
   });
 
   final String label;
   final List<Map<String, dynamic>> places;
   final void Function(String pid) onDelete;
+  final List<String> likedNames;
+  final void Function(Map<String, dynamic> place) onLike;
   final void Function(Map<String, dynamic> place) onTap;
 
   @override
@@ -296,6 +322,8 @@ class _DateSection extends StatelessWidget {
             (Map<String, dynamic> place) => _PlaceTile(
               place: place,
               onDelete: () => onDelete(place['pid'] as String? ?? ''),
+              onLike: () => onLike(place),
+              isLiked: likedNames.contains(place['name']),
               onTap: () => onTap(place),
             ),
           ),
@@ -309,11 +337,15 @@ class _PlaceTile extends StatelessWidget {
   const _PlaceTile({
     required this.place,
     required this.onDelete,
+    required this.onLike,
+    required this.isLiked,
     required this.onTap,
   });
 
   final Map<String, dynamic> place;
   final VoidCallback onDelete;
+  final VoidCallback onLike;
+  final bool isLiked;
   final VoidCallback onTap;
 
   @override
@@ -382,9 +414,20 @@ class _PlaceTile extends StatelessWidget {
                 ],
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-              onPressed: onDelete,
+            Column(
+              children: <Widget>[
+                IconButton(
+                  icon: Icon(
+                    isLiked ? Icons.favorite : Icons.favorite_border,
+                    color: isLiked ? Colors.redAccent : const Color(0xFF16324F),
+                  ),
+                  onPressed: onLike,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                  onPressed: onDelete,
+                ),
+              ],
             ),
           ],
         ),

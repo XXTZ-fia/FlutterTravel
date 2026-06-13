@@ -17,9 +17,11 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
+  static const String _developerPhone = '15959212273';
+
   String _phone = '';
   String _provider = '';
-  List<String> _preferredTags = <String>[];
+  List<String> _preferredTags = <String>[]; 
   bool _aiConfigured = false;
   bool _amapConfigured = false;
   bool _loading = true;
@@ -84,6 +86,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _openFeedbackCenter({bool developerMode = false}) async {
+    if (developerMode && _phone != _developerPhone) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => FeedbackPage(
@@ -101,6 +104,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
     final bool isSocialLogin = _phone.isEmpty;
     final String displayName = isSocialLogin ? '$_provider 账号' : _phone;
+    final bool canViewInbox = _phone == _developerPhone;
 
     return Scaffold(
       appBar: AppBar(
@@ -222,12 +226,14 @@ class _ProfilePageState extends State<ProfilePage> {
                   label: '反馈中心',
                   onTap: () => _openFeedbackCenter(),
                 ),
-                const Divider(height: 1),
-                _TappableRow(
-                  icon: Icons.admin_panel_settings_outlined,
-                  label: '开发者收件箱',
-                  onTap: () => _openFeedbackCenter(developerMode: true),
-                ),
+                if (canViewInbox) ...<Widget>[
+                  const Divider(height: 1),
+                  _TappableRow(
+                    icon: Icons.admin_panel_settings_outlined,
+                    label: '开发者收件箱',
+                    onTap: () => _openFeedbackCenter(developerMode: true),
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 16),

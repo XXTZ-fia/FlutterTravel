@@ -5,10 +5,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_travel/screens/details.dart';
 import 'package:flutter_travel/services/amap_key_service.dart';
 import 'package:flutter_travel/services/amap_service.dart';
-import 'package:flutter_travel/services/destination_repository.dart';
 import 'package:flutter_travel/services/itinerary_service.dart';
-import 'package:flutter_travel/util/places.dart' as local_places;
-import 'package:flutter_travel/util/travel_tags.dart';
+import 'package:flutter_travel/util/history_service.dart';
 import 'package:flutter_travel/widgets/app_image.dart';
 import 'package:flutter_travel/widgets/schedule_add_sheet.dart';
 import 'package:latlong2/latlong.dart';
@@ -23,16 +21,6 @@ class MapPage extends StatefulWidget {
 }
 
 class _MapPageState extends State<MapPage> {
-  static const List<String> _tags = <String>[
-    TravelTags.all,
-    TravelTags.nature,
-    TravelTags.culture,
-    TravelTags.food,
-    TravelTags.city,
-    TravelTags.family,
-    TravelTags.budget,
-  ];
-
   static const List<Color> _routePalette = <Color>[
     Color(0xFFEF6C57),
     Color(0xFF2C6E63),
@@ -47,12 +35,11 @@ class _MapPageState extends State<MapPage> {
 
   final MapController _mapController = MapController();
 
-  List<Map<String, dynamic>> _places = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _schedules = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _nearbyPlaces = <Map<String, dynamic>>[];
+  List<String> _likedNames = <String>[];
   Map<String, dynamic>? _selected;
   LatLng? _tapPoint;
-  String _selectedTag = TravelTags.all;
   bool _loading = true;
   bool _mapReady = false;
   bool _queryingNearby = false;
@@ -72,27 +59,13 @@ class _MapPageState extends State<MapPage> {
   }
 
   Future<void> _load() async {
-    final List<Map<String, dynamic>> quickPlaces =
-        await DestinationRepository.getFastDestinations();
     final List<Map<String, dynamic>> itineraries = await ItineraryService.getAll();
+    final List<String> likedNames = await HistoryService.getLiked();
     if (!mounted) return;
     setState(() {
-      _places = quickPlaces;
       _schedules = itineraries;
+      _likedNames = likedNames;
       _loading = false;
-    });
-    _fitBoundsIfReady();
-    _applyInitialFocusIfNeeded();
-
-    final String amapKey = await AmapKeyService.load();
-    if (amapKey.isEmpty) return;
-
-    final List<dynamic> results = await Future.wait(<Future<dynamic>>[
-      DestinationRepository.getDestinations(),
-    ]);
-    if (!mounted) return;
-    setState(() {
-      _places = results[0] as List<Map<String, dynamic>>;
     });
     _fitBoundsIfReady();
     _applyInitialFocusIfNeeded();
@@ -131,16 +104,12 @@ class _MapPageState extends State<MapPage> {
   void _fitBoundsIfReady() {
     if (!_mapReady || _loading) return;
 
-    final List<LatLng> points = <LatLng>[
-      ..._allMappable.map(
-        (Map<String, dynamic> place) =>
-            LatLng(_toDouble(place['lat'])!, _toDouble(place['lng'])!),
-      ),
-      ..._scheduledStops.map(
-        (Map<String, dynamic> stop) =>
-            LatLng(_toDouble(stop['lat'])!, _toDouble(stop['lng'])!),
-      ),
-    ];
+    final List<LatLng> points = _scheduledStops
+        .map((Map<String, dynamic> stop) => LatLng(_toDouble(stop['lat'])!, _toDouble(stop['lng'])!))
+        .toList();
+    if (_tapPoint != null) {
+      points.add(_tapPoint!);
+    }
     if (points.isEmpty) return;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -156,22 +125,6 @@ class _MapPageState extends State<MapPage> {
         );
       }
     });
-  }
-
-  List<Map<String, dynamic>> get _allMappable {
-    final Iterable<Map<String, dynamic>> source =
-        _places.isNotEmpty ? _places : local_places.places;
-    return source.where((Map<String, dynamic> place) {
-      return _toDouble(place['lat']) != null && _toDouble(place['lng']) != null;
-    }).toList();
-  }
-
-  List<Map<String, dynamic>> get _mappable {
-    return _allMappable.where((Map<String, dynamic> place) {
-      if (_selectedTag == TravelTags.all) return true;
-      final List<dynamic> tags = place['tags'] as List<dynamic>? ?? <dynamic>[];
-      return tags.contains(_selectedTag);
-    }).toList();
   }
 
   List<Map<String, dynamic>> get _scheduledStops {
@@ -229,22 +182,57 @@ class _MapPageState extends State<MapPage> {
     return lines;
   }
 
+  List<Marker> get _scheduleArrowMarkers {
+    final List<Marker> markers = <Marker>[];
+    for (int scheduleIndex = 0; scheduleIndex < _schedules.length; scheduleIndex++) {
+      final Map<String, dynamic> schedule = _schedules[scheduleIndex];
+      final Color color = _routePalette[scheduleIndex % _routePalette.length];
+      final List<Map<String, dynamic>> points = (schedule['places'] as List<dynamic>? ?? <dynamic>[])
+          .map((dynamic item) => Map<String, dynamic>.from(item as Map))
+          .where((Map<String, dynamic> place) {
+            return _toDouble(place['lat']) != null && _toDouble(place['lng']) != null;
+          })
+          .toList();
+      points.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
+        final String aDate = a['visitDate'] as String? ?? '';
+        final String bDate = b['visitDate'] as String? ?? '';
+        final int dateCompare = aDate.compareTo(bDate);
+        if (dateCompare != 0) return dateCompare;
+        final String aTime = a['addedAt'] as String? ?? '';
+        final String bTime = b['addedAt'] as String? ?? '';
+        return aTime.compareTo(bTime);
+      });
+      for (int i = 0; i < points.length - 1; i++) {
+        final double startLat = _toDouble(points[i]['lat'])!;
+        final double startLng = _toDouble(points[i]['lng'])!;
+        final double endLat = _toDouble(points[i + 1]['lat'])!;
+        final double endLng = _toDouble(points[i + 1]['lng'])!;
+        markers.add(
+          Marker(
+            point: LatLng((startLat + endLat) / 2, (startLng + endLng) / 2),
+            width: 28,
+            height: 28,
+            child: Transform.rotate(
+              angle: math.atan2(endLng - startLng, endLat - startLat),
+              child: Icon(
+                Icons.arrow_forward_rounded,
+                color: color,
+                size: 24,
+              ),
+            ),
+          ),
+        );
+      }
+    }
+    return markers;
+  }
+
   static double? _toDouble(dynamic value) {
     if (value == null) return null;
     if (value is double) return value;
     if (value is int) return value.toDouble();
     if (value is String) return double.tryParse(value);
     return null;
-  }
-
-  Color _tagColor(List<dynamic> tags) {
-    if (tags.contains(TravelTags.nature)) return Colors.blue.shade600;
-    if (tags.contains(TravelTags.culture)) return Colors.orange.shade700;
-    if (tags.contains(TravelTags.food)) return Colors.red.shade600;
-    if (tags.contains(TravelTags.city)) return Colors.purple.shade600;
-    if (tags.contains(TravelTags.family)) return Colors.green.shade700;
-    if (tags.contains(TravelTags.budget)) return Colors.teal.shade600;
-    return Colors.blueGrey.shade600;
   }
 
   void _onMarkerTap(Map<String, dynamic> place) {
@@ -308,6 +296,20 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
+  Future<void> _toggleLike(Map<String, dynamic> place) async {
+    final String name = place['name'] as String? ?? '';
+    if (name.isEmpty) return;
+    await HistoryService.toggleLike(name);
+    final List<String> likedNames = await HistoryService.getLiked();
+    if (!mounted) return;
+    setState(() => _likedNames = likedNames);
+  }
+
+  bool _isLiked(Map<String, dynamic> place) {
+    final String name = place['name'] as String? ?? '';
+    return _likedNames.contains(name);
+  }
+
   void _resetView() {
     setState(() {
       _tapPoint = null;
@@ -315,7 +317,7 @@ class _MapPageState extends State<MapPage> {
       _nearbyMessage = null;
       _selected = null;
     });
-    if (_allMappable.isNotEmpty || _scheduledStops.isNotEmpty) {
+    if (_scheduledStops.isNotEmpty) {
       _fitBoundsIfReady();
     } else {
       _mapController.move(_chinaCenter, _defaultZoom);
@@ -326,6 +328,7 @@ class _MapPageState extends State<MapPage> {
   Widget build(BuildContext context) {
     final List<Map<String, dynamic>> scheduledStops = _scheduledStops;
     final List<Polyline> polylines = _schedulePolylines;
+    final List<Marker> arrowMarkers = _scheduleArrowMarkers;
 
     return Scaffold(
       body: _loading
@@ -350,27 +353,7 @@ class _MapPageState extends State<MapPage> {
                       maxZoom: 18,
                     ),
                     if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
-                    MarkerLayer(
-                      markers: _mappable.map((Map<String, dynamic> place) {
-                        final List<dynamic> tags = place['tags'] as List<dynamic>? ?? <dynamic>[];
-                        return Marker(
-                          point: LatLng(
-                            _toDouble(place['lat'])!,
-                            _toDouble(place['lng'])!,
-                          ),
-                          width: 34,
-                          height: 38,
-                          child: GestureDetector(
-                            onTap: () => _onMarkerTap(place),
-                            child: Icon(
-                              Icons.location_pin,
-                              size: 34,
-                              color: _tagColor(tags).withOpacity(0.72),
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
+                    if (arrowMarkers.isNotEmpty) MarkerLayer(markers: arrowMarkers),
                     MarkerLayer(
                       markers: scheduledStops.map((Map<String, dynamic> stop) {
                         final Color color = Color(stop['routeColor'] as int);
@@ -441,46 +424,8 @@ class _MapPageState extends State<MapPage> {
                       bottom: false,
                       child: Column(
                         children: <Widget>[
-                          SizedBox(
-                            height: 52,
-                            child: ListView.separated(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                              scrollDirection: Axis.horizontal,
-                              itemCount: _tags.length,
-                              separatorBuilder: (_, __) => const SizedBox(width: 6),
-                              itemBuilder: (BuildContext context, int index) {
-                                final String tag = _tags[index];
-                                final bool selected = _selectedTag == tag;
-                                return GestureDetector(
-                                  onTap: () => setState(() => _selectedTag = tag),
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 150),
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color:
-                                          selected ? const Color(0xFF16324F) : Colors.white,
-                                      borderRadius: BorderRadius.circular(20),
-                                      border: Border.all(
-                                        color: selected
-                                            ? const Color(0xFF16324F)
-                                            : const Color(0xFFD6E0EA),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      tag,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: selected ? Colors.white : Colors.blueGrey[700],
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                             child: Container(
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
@@ -501,7 +446,7 @@ class _MapPageState extends State<MapPage> {
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Text(
-                                      '点击地图任意位置，用高德 API 查附近地点；带箭头的点表示已加入行程，并按同色线路连接。',
+                                      '点击地图任意位置，用高德 API 查询附近地点。地图只展示已加入行程的地点，路线会按时间顺序用同色箭头连接。',
                                       style: TextStyle(
                                         height: 1.35,
                                         color: Colors.blueGrey[700],
@@ -525,7 +470,7 @@ class _MapPageState extends State<MapPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: <Widget>[
-                        _MiniBadge(label: '${_mappable.length} 个目的地'),
+                        _MiniBadge(label: '${scheduledStops.length} 个已安排地点'),
                         const SizedBox(height: 8),
                         _MiniBadge(label: '${_schedules.length} 条行程'),
                       ],
@@ -552,6 +497,8 @@ class _MapPageState extends State<MapPage> {
                       places: _nearbyPlaces,
                       onSelect: _onMarkerTap,
                       onAdd: _addToSchedule,
+                      onLike: _toggleLike,
+                      isLiked: _isLiked,
                     ),
                   ),
                 AnimatedPositioned(
@@ -572,9 +519,11 @@ class _MapPageState extends State<MapPage> {
                                   place: Map<String, dynamic>.from(_selected!),
                                 ),
                               ),
-                            );
+                            ).then((_) => _load());
                           },
                           onAdd: () => _addToSchedule(_selected!),
+                          onLike: () => _toggleLike(_selected!),
+                          isLiked: _isLiked(_selected!),
                         ),
                 ),
                 Positioned(
@@ -714,6 +663,8 @@ class _NearbyPanel extends StatelessWidget {
     required this.places,
     required this.onSelect,
     required this.onAdd,
+    required this.onLike,
+    required this.isLiked,
   });
 
   final bool loading;
@@ -721,6 +672,8 @@ class _NearbyPanel extends StatelessWidget {
   final List<Map<String, dynamic>> places;
   final void Function(Map<String, dynamic> place) onSelect;
   final void Function(Map<String, dynamic> place) onAdd;
+  final void Function(Map<String, dynamic> place) onLike;
+  final bool Function(Map<String, dynamic> place) isLiked;
 
   @override
   Widget build(BuildContext context) {
@@ -743,7 +696,7 @@ class _NearbyPanel extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '基于地图点选结果，可直接查看并加入行程。',
+            '基于地图点选结果，可直接查看、收藏并加入行程。',
             style: TextStyle(color: Colors.blueGrey[500], fontSize: 12),
           ),
           const SizedBox(height: 12),
@@ -759,7 +712,7 @@ class _NearbyPanel extends StatelessWidget {
             )
           else
             SizedBox(
-              height: 196,
+              height: 218,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: places.length,
@@ -814,19 +767,30 @@ class _NearbyPanel extends StatelessWidget {
                             ),
                           ),
                           const Spacer(),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton(
-                              onPressed: () => onAdd(place),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: const Color(0xFF16324F),
-                                side: const BorderSide(color: Color(0xFF16324F)),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
+                          Row(
+                            children: <Widget>[
+                              IconButton.filledTonal(
+                                onPressed: () => onLike(place),
+                                icon: Icon(
+                                  isLiked(place) ? Icons.favorite : Icons.favorite_border,
+                                  color: isLiked(place) ? Colors.redAccent : const Color(0xFF16324F),
                                 ),
                               ),
-                              child: const Text('加入行程'),
-                            ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () => onAdd(place),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: const Color(0xFF16324F),
+                                    side: const BorderSide(color: Color(0xFF16324F)),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  child: const Text('加入行程'),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -847,12 +811,16 @@ class _PlaceCard extends StatelessWidget {
     required this.onClose,
     required this.onDetails,
     required this.onAdd,
+    required this.onLike,
+    required this.isLiked,
   });
 
   final Map<String, dynamic> place;
   final VoidCallback onClose;
   final VoidCallback onDetails;
   final VoidCallback onAdd;
+  final VoidCallback onLike;
+  final bool isLiked;
 
   @override
   Widget build(BuildContext context) {
@@ -1005,6 +973,14 @@ class _PlaceCard extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              IconButton.filledTonal(
+                onPressed: onLike,
+                icon: Icon(
+                  isLiked ? Icons.favorite : Icons.favorite_border,
+                  color: isLiked ? Colors.redAccent : const Color(0xFF16324F),
                 ),
               ),
               const SizedBox(width: 10),

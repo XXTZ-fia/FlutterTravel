@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_travel/util/user_scope.dart';
 
 class HistoryService {
   static const String _keyViewed = 'history_viewed';
@@ -12,7 +13,8 @@ class HistoryService {
     history.remove(name);
     history.insert(0, name);
     if (history.length > _maxHistory) history.removeLast();
-    await prefs.setString(_keyViewed, jsonEncode(history));
+    final String key = await UserScope.key(_keyViewed);
+    await prefs.setString(key, jsonEncode(history));
   }
 
   static Future<void> toggleLike(String name) async {
@@ -23,7 +25,8 @@ class HistoryService {
     } else {
       liked.add(name);
     }
-    await prefs.setString(_keyLiked, jsonEncode(liked));
+    final String key = await UserScope.key(_keyLiked);
+    await prefs.setString(key, jsonEncode(liked));
   }
 
   static Future<bool> isLiked(String name) async {
@@ -32,14 +35,16 @@ class HistoryService {
 
   static Future<List<String>> getLiked() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? raw = prefs.getString(_keyLiked);
+    final String key = await UserScope.key(_keyLiked);
+    final String? raw = prefs.getString(key);
     if (raw == null) return <String>[];
     return List<String>.from(jsonDecode(raw) as List);
   }
 
   static Future<List<String>> getViewed() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? raw = prefs.getString(_keyViewed);
+    final String key = await UserScope.key(_keyViewed);
+    final String? raw = prefs.getString(key);
     if (raw == null) return <String>[];
     return List<String>.from(jsonDecode(raw) as List);
   }
