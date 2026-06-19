@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_travel/screens/details.dart';
+import 'package:flutter_travel/services/amap_key_service.dart';
+import 'package:flutter_travel/services/amap_service.dart';
 import 'package:flutter_travel/services/api_key_service.dart';
 import 'package:flutter_travel/services/deepseek_service.dart';
 import 'package:flutter_travel/services/destination_repository.dart';
@@ -9,6 +11,7 @@ import 'package:flutter_travel/widgets/app_image.dart';
 import 'package:flutter_travel/widgets/icon_badge.dart';
 import 'package:flutter_travel/widgets/todo_sheet.dart';
 import 'package:flutter_travel/widgets/vertical_place_item.dart';
+import 'package:flutter_travel/util/multilingual_search.dart';
 import 'package:flutter_travel/util/travel_tags.dart';
 
 class DiscoverPage extends StatefulWidget {
@@ -23,8 +26,12 @@ class _DiscoverPageState extends State<DiscoverPage> {
 
   String _searchQuery = '';
   String _selectedTag = TravelTags.all;
+  bool _searchingRemote = false;
+  int _searchRequestId = 0;
 
   List<Map<String, dynamic>> _rankedPlaces = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _localSearchResults = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _remoteSearchResults = <Map<String, dynamic>>[];
   Map<String, String> _aiTexts = <String, String>{};
   List<String> _preferredTags = <String>[];
   bool _loadingRec = true;
@@ -40,6 +47,56 @@ class _DiscoverPageState extends State<DiscoverPage> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _onSearchChanged(String value) async {
+    final String query = value.trim();
+    final List<Map<String, dynamic>> localMatches = query.isEmpty
+        ? <Map<String, dynamic>>[]
+        : _rankedPlaces
+            .where((Map<String, dynamic> p) => MultilingualSearch.matchesPlace(p, query))
+            .toList();
+
+    setState(() {
+      _searchQuery = value;
+      _localSearchResults = localMatches;
+      _searchingRemote = query.isNotEmpty;
+      if (query.isEmpty) {
+        _remoteSearchResults = <Map<String, dynamic>>[];
+      }
+    });
+
+    if (query.isEmpty) return;
+
+    final int requestId = ++_searchRequestId;
+    final String amapKey = await AmapKeyService.load();
+    if (requestId != _searchRequestId || !mounted) return;
+
+    if (amapKey.isEmpty) {
+      setState(() {
+        _remoteSearchResults = <Map<String, dynamic>>[];
+        _searchingRemote = false;
+      });
+      return;
+    }
+
+    try {
+      final List<Map<String, dynamic>> results = await AmapService.searchPlaces(
+        apiKey: amapKey,
+        query: query,
+      );
+      if (!mounted || requestId != _searchRequestId) return;
+      setState(() {
+        _remoteSearchResults = results;
+        _searchingRemote = false;
+      });
+    } catch (_) {
+      if (!mounted || requestId != _searchRequestId) return;
+      setState(() {
+        _remoteSearchResults = <Map<String, dynamic>>[];
+        _searchingRemote = false;
+      });
+    }
   }
 
   Future<void> _loadRecommendations() async {
@@ -93,21 +150,25 @@ class _DiscoverPageState extends State<DiscoverPage> {
   }
 
   List<Map<String, dynamic>> get _displayedPlaces {
-    List<Map<String, dynamic>> result =
-        List<Map<String, dynamic>>.from(_rankedPlaces);
-
-      if (_selectedTag != TravelTags.all) {
-      result = result.where((Map<String, dynamic> p) {
-        final List<String> tags = List<String>.from(p['tags'] as List);
-        return tags.contains(_selectedTag);
-      }).toList();
+    List<Map<String, dynamic>> result;
+    if (_searchQuery.isNotEmpty) {
+      // Merge local (immediate, English-friendly) + remote (AMap async), deduplicated by name
+      final Map<String, Map<String, dynamic>> merged = <String, Map<String, dynamic>>{};
+      for (final Map<String, dynamic> p in _localSearchResults) {
+        merged[p['name'] as String? ?? ''] = p;
+      }
+      for (final Map<String, dynamic> p in _remoteSearchResults) {
+        merged[p['name'] as String? ?? ''] = p;
+      }
+      result = merged.values.toList();
+    } else {
+      result = List<Map<String, dynamic>>.from(_rankedPlaces);
     }
 
-    if (_searchQuery.isNotEmpty) {
-      final String q = _searchQuery.toLowerCase();
+    if (_selectedTag != TravelTags.all) {
       result = result.where((Map<String, dynamic> p) {
-        return '${p["name"]}'.toLowerCase().contains(q) ||
-            '${p["location"]}'.toLowerCase().contains(q);
+        final List<String> tags = List<String>.from(p['tags'] as List? ?? <String>[]);
+        return tags.contains(_selectedTag);
       }).toList();
     }
 
@@ -176,7 +237,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       child: TextField(
         controller: _searchController,
-        onChanged: (String v) => setState(() => _searchQuery = v),
+        onChanged: _onSearchChanged,
         decoration: InputDecoration(
           hintText: '搜索目的地、城市或景点…',
           prefixIcon: const Icon(Icons.search, color: Colors.blueGrey),
@@ -191,7 +252,11 @@ class _DiscoverPageState extends State<DiscoverPage> {
                   icon: const Icon(Icons.clear, size: 18),
                   onPressed: () {
                     _searchController.clear();
-                    setState(() => _searchQuery = '');
+                    setState(() {
+                      _searchQuery = '';
+                      _localSearchResults = <Map<String, dynamic>>[];
+                      _remoteSearchResults = <Map<String, dynamic>>[];
+                    });
                   },
                 )
               : null,
@@ -269,7 +334,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
           ),
         ),
         SizedBox(
-          height: _aiTexts.isNotEmpty ? 300 : 230,
+          height: _aiTexts.isNotEmpty ? 312 : 252,
           child: ListView.separated(
             padding: const EdgeInsets.only(left: 20, right: 4),
             scrollDirection: Axis.horizontal,
@@ -298,16 +363,27 @@ class _DiscoverPageState extends State<DiscoverPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            _selectedTag == TravelTags.all ? '全部目的地' : '$_selectedTag 推荐',
+            _searchQuery.isNotEmpty
+                ? (_searchingRemote ? '正在搜索高德结果…' : '高德搜索结果')
+                : (_selectedTag == TravelTags.all ? '全部目的地' : '$_selectedTag 推荐'),
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 14),
-          if (shown.isEmpty)
+          if (_searchQuery.isNotEmpty && _searchingRemote)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (shown.isEmpty)
             Center(
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 40),
                 child: Text(
-                  '没有找到匹配的目的地。',
+                  _searchQuery.isNotEmpty
+                      ? '没有找到高德搜索结果。'
+                      : '没有找到匹配的目的地。',
                   style: TextStyle(color: Colors.blueGrey[400]),
                 ),
               ),
@@ -354,6 +430,7 @@ class _ForYouCard extends StatelessWidget {
       },
       child: SizedBox(
         width: 200,
+        height: aiText != null ? 312 : 252,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -361,7 +438,7 @@ class _ForYouCard extends StatelessWidget {
               children: <Widget>[
                 AppImage(
                   src: place['img'] as String,
-                  height: 150,
+                  height: 142,
                   width: 200,
                   borderRadius: BorderRadius.circular(14),
                 ),
@@ -418,44 +495,54 @@ class _ForYouCard extends StatelessWidget {
                 ),
               ],
             ),
-            if (aiText != null) ...<Widget>[
-              const SizedBox(height: 6),
-              Text(
-                aiText!,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.blueGrey[600],
-                  height: 1.4,
-                  fontStyle: FontStyle.italic,
-                ),
-                maxLines: 4,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-            if (reasons.isNotEmpty) ...<Widget>[
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: reasons.take(2).map((String reason) {
-                  return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE8F1F8),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      reason,
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: Color(0xFF16324F),
-                        fontWeight: FontWeight.w700,
+            const SizedBox(height: 6),
+            Expanded(
+              child: SingleChildScrollView(
+                physics: const NeverScrollableScrollPhysics(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    if (aiText != null)
+                      Text(
+                        aiText!,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.blueGrey[600],
+                          height: 1.4,
+                          fontStyle: FontStyle.italic,
+                        ),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
-                  );
-                }).toList(),
+                    if (aiText != null && reasons.isNotEmpty) const SizedBox(height: 8),
+                    if (reasons.isNotEmpty)
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: reasons.take(1).map((String reason) {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE8F1F8),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              reason,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Color(0xFF16324F),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                  ],
+                ),
               ),
-            ],
+            ),
           ],
         ),
       ),

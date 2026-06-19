@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_travel/services/destination_repository.dart';
+import 'package:flutter_travel/util/multilingual_search.dart';
 import 'package:flutter_travel/widgets/app_image.dart';
 
 class DestinationsListPage extends StatefulWidget {
@@ -107,9 +108,7 @@ class _DestinationsListPageState extends State<DestinationsListPage> {
           (p['tags'] as List<dynamic>).contains(_selectedTag);
       if (!tagMatch) return false;
       if (_query.isEmpty) return true;
-      final String q = _query.toLowerCase();
-      return '${p['name']}'.toLowerCase().contains(q) ||
-          '${p['location']}'.toLowerCase().contains(q);
+        return MultilingualSearch.matchesPlace(p, _query);
     }).toList();
   }
 

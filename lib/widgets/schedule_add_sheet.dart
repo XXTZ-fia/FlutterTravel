@@ -181,7 +181,7 @@ class _ScheduleAddSheetState extends State<_ScheduleAddSheet> {
 
     setState(() {
       _saving = true;
-      _enriching = true;
+      _enriching = false;
     });
     try {
       if (scheduleId == null) {
@@ -321,7 +321,7 @@ class _ScheduleAddSheetState extends State<_ScheduleAddSheet> {
                 ),
                 const SizedBox(height: 10),
                 SizedBox(
-                  height: 112,
+                  height: 118,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
                     children: <Widget>[
@@ -513,9 +513,7 @@ class _ScheduleAddSheetState extends State<_ScheduleAddSheet> {
                           )
                         : const Icon(Icons.event_available_outlined),
                     label: Text(
-                      _saving
-                          ? (_enriching ? 'AI 分析并保存中...' : '保存中...')
-                          : '加入行程',
+                      _saving ? '保存中...' : '加入行程',
                     ),
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF16324F),
@@ -691,7 +689,7 @@ class _ScheduleChoiceCard extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           width: 170,
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: selected ? accentColor : Colors.white,
             borderRadius: BorderRadius.circular(22),
@@ -710,9 +708,9 @@ class _ScheduleChoiceCard extends StatelessWidget {
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: <Widget>[
               Icon(icon, color: selected ? Colors.white : accentColor),
-              const Spacer(),
               Text(
                 title,
                 maxLines: 1,
@@ -729,6 +727,7 @@ class _ScheduleChoiceCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 12,
+                  height: 1.25,
                   color: selected ? Colors.white70 : Colors.blueGrey[500],
                 ),
               ),

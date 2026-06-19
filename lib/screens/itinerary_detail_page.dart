@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_travel/services/amap_key_service.dart';
+import 'package:flutter_travel/services/amap_service.dart';
 import 'package:flutter_travel/screens/details.dart';
-import 'package:flutter_travel/services/destination_repository.dart';
 import 'package:flutter_travel/services/itinerary_service.dart';
 import 'package:flutter_travel/util/history_service.dart';
 import 'package:flutter_travel/widgets/app_image.dart';
@@ -88,7 +91,7 @@ class _ItineraryDetailPageState extends State<ItineraryDetailPage> {
   Future<void> _toggleLike(Map<String, dynamic> place) async {
     final String name = place['name'] as String? ?? '';
     if (name.isEmpty) return;
-    await HistoryService.toggleLike(name);
+    await HistoryService.toggleLike(name, placeData: Map<String, dynamic>.from(place));
     await _loadLikedNames();
   }
 
@@ -506,49 +509,58 @@ class _VisitDateNoteDialogState extends State<_VisitDateNoteDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final double maxContentHeight = MediaQuery.of(context).size.height * 0.5;
     return AlertDialog(
       title: const Text('安排到哪一天'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          if (_options.isNotEmpty)
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+      content: SizedBox(
+        width: double.maxFinite,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxContentHeight),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                ..._options.map((DateTime date) {
-                  final bool selected =
-                      _selectedDate != null && _fmt(_selectedDate!) == _fmt(date);
-                  return ChoiceChip(
-                    label: Text(_fmt(date)),
-                    selected: selected,
-                    onSelected: (_) => setState(() => _selectedDate = date),
-                  );
-                }),
-                ActionChip(
-                  avatar: const Icon(Icons.edit_calendar_outlined, size: 18),
-                  label: const Text('其他日期'),
-                  onPressed: _pickCustomDate,
+                if (_options.isNotEmpty)
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: <Widget>[
+                      ..._options.map((DateTime date) {
+                        final bool selected =
+                            _selectedDate != null && _fmt(_selectedDate!) == _fmt(date);
+                        return ChoiceChip(
+                          label: Text(_fmt(date)),
+                          selected: selected,
+                          onSelected: (_) => setState(() => _selectedDate = date),
+                        );
+                      }),
+                      ActionChip(
+                        avatar: const Icon(Icons.edit_calendar_outlined, size: 18),
+                        label: const Text('其他日期'),
+                        onPressed: _pickCustomDate,
+                      ),
+                    ],
+                  )
+                else
+                  OutlinedButton.icon(
+                    onPressed: _pickCustomDate,
+                    icon: const Icon(Icons.calendar_month_outlined),
+                    label: Text(_selectedDate == null ? '选择日期' : _fmt(_selectedDate!)),
+                  ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _noteCtrl,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: '备注（可选）',
+                    hintText: '如：晚饭后去，顺路看看夜景',
+                  ),
                 ),
               ],
-            )
-          else
-            OutlinedButton.icon(
-              onPressed: _pickCustomDate,
-              icon: const Icon(Icons.calendar_month_outlined),
-              label: Text(_selectedDate == null ? '选择日期' : _fmt(_selectedDate!)),
-            ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _noteCtrl,
-            maxLines: 2,
-            decoration: const InputDecoration(
-              labelText: '备注（可选）',
-              hintText: '如：晚饭后去，顺路看看夜景',
             ),
           ),
-        ],
+        ),
       ),
       actions: <Widget>[
         TextButton(
@@ -577,43 +589,101 @@ class _PlacePickerSheet extends StatefulWidget {
 }
 
 class _PlacePickerSheetState extends State<_PlacePickerSheet> {
-  List<Map<String, dynamic>> _all = <Map<String, dynamic>>[];
-  List<Map<String, dynamic>> _filtered = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _results = <Map<String, dynamic>>[];
+  List<String> _likedNames = <String>[];
   bool _loading = true;
+  bool _searching = false;
+  String _statusText = '输入景点名称后，直接从高德地图搜索。';
+  Timer? _debounce;
   final TextEditingController _searchCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadLikedNames();
   }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
-    final List<Map<String, dynamic>> places = await DestinationRepository.getDestinations();
     if (!mounted) return;
     setState(() {
-      _all = places;
-      _filtered = places;
       _loading = false;
     });
   }
 
+  Future<void> _loadLikedNames() async {
+    final List<String> likedNames = await HistoryService.getLiked();
+    if (!mounted) return;
+    setState(() => _likedNames = likedNames);
+  }
+
   void _filter(String query) {
-    final String lower = query.toLowerCase();
-    setState(() {
-      _filtered = query.isEmpty
-          ? _all
-          : _all.where((Map<String, dynamic> place) {
-              return '${place['name']}'.toLowerCase().contains(lower) ||
-                  '${place['location']}'.toLowerCase().contains(lower);
-            }).toList();
+    _debounce?.cancel();
+    final String keyword = query.trim();
+    if (keyword.isEmpty) {
+      setState(() {
+        _searching = false;
+        _results = <Map<String, dynamic>>[];
+        _statusText = '输入景点名称后，直接从高德地图搜索。';
+      });
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 350), () {
+      _search(keyword);
     });
+  }
+
+  Future<void> _search(String keyword) async {
+    final String amapKey = await AmapKeyService.load();
+    if (amapKey.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _searching = false;
+        _results = <Map<String, dynamic>>[];
+        _statusText = '请先在设置中配置高德 API Key。';
+      });
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _searching = true;
+      _statusText = '正在搜索...';
+    });
+
+    try {
+      final List<Map<String, dynamic>> places = await AmapService.searchPlaces(
+        apiKey: amapKey,
+        query: keyword,
+      );
+      if (!mounted) return;
+      setState(() {
+        _results = places;
+        _searching = false;
+        _statusText = places.isEmpty ? '没有搜到匹配地点，换个关键词试试。' : '';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _searching = false;
+        _results = <Map<String, dynamic>>[];
+        _statusText = '搜索失败，请稍后再试。';
+      });
+    }
+  }
+
+  Future<void> _toggleLike(Map<String, dynamic> place) async {
+    final String name = place['name'] as String? ?? '';
+    if (name.isEmpty) return;
+    await HistoryService.toggleLike(name, placeData: Map<String, dynamic>.from(place));
+    await _loadLikedNames();
   }
 
   @override
@@ -655,58 +725,82 @@ class _PlacePickerSheetState extends State<_PlacePickerSheet> {
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                    itemCount: _filtered.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (BuildContext context, int index) {
-                      final Map<String, dynamic> place = _filtered[index];
-                      return InkWell(
-                        onTap: () => Navigator.pop(context, place),
-                        borderRadius: BorderRadius.circular(18),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          child: Row(
-                            children: <Widget>[
-                              AppImage(
-                                src: place['img'] as String? ?? '',
-                                height: 62,
-                                width: 72,
-                                borderRadius: BorderRadius.circular(12),
+                : _searching
+                    ? const Center(child: CircularProgressIndicator())
+                    : _results.isEmpty
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 28),
+                              child: Text(
+                                _statusText,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.blueGrey[500]),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: <Widget>[
-                                    Text(
-                                      place['name'] as String? ?? '',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                        color: Color(0xFF16324F),
+                            ),
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                            itemCount: _results.length,
+                            separatorBuilder: (_, __) => const SizedBox(height: 10),
+                            itemBuilder: (BuildContext context, int index) {
+                              final Map<String, dynamic> place = _results[index];
+                              return InkWell(
+                                onTap: () => Navigator.pop(context, place),
+                                borderRadius: BorderRadius.circular(18),
+                                child: Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(18),
+                                  ),
+                                  child: Row(
+                                    children: <Widget>[
+                                      AppImage(
+                                        src: place['img'] as String? ?? '',
+                                        height: 62,
+                                        width: 72,
+                                        borderRadius: BorderRadius.circular(12),
                                       ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      place['location'] as String? ?? '',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(color: Colors.blueGrey[500], fontSize: 12),
-                                    ),
-                                  ],
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: <Widget>[
+                                            Text(
+                                              place['name'] as String? ?? '',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w800,
+                                                color: Color(0xFF16324F),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              place['location'] as String? ?? '',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(color: Colors.blueGrey[500], fontSize: 12),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      IconButton(
+                                        onPressed: () => _toggleLike(place),
+                                        icon: Icon(
+                                          _likedNames.contains(place['name'])
+                                              ? Icons.favorite
+                                              : Icons.favorite_border,
+                                          color: _likedNames.contains(place['name'])
+                                              ? Colors.redAccent
+                                              : const Color(0xFF16324F),
+                                        ),
+                                      ),
+                                      const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                            ],
+                              );
+                            },
                           ),
-                        ),
-                      );
-                    },
-                  ),
           ),
         ],
       ),

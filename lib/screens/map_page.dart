@@ -182,51 +182,6 @@ class _MapPageState extends State<MapPage> {
     return lines;
   }
 
-  List<Marker> get _scheduleArrowMarkers {
-    final List<Marker> markers = <Marker>[];
-    for (int scheduleIndex = 0; scheduleIndex < _schedules.length; scheduleIndex++) {
-      final Map<String, dynamic> schedule = _schedules[scheduleIndex];
-      final Color color = _routePalette[scheduleIndex % _routePalette.length];
-      final List<Map<String, dynamic>> points = (schedule['places'] as List<dynamic>? ?? <dynamic>[])
-          .map((dynamic item) => Map<String, dynamic>.from(item as Map))
-          .where((Map<String, dynamic> place) {
-            return _toDouble(place['lat']) != null && _toDouble(place['lng']) != null;
-          })
-          .toList();
-      points.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
-        final String aDate = a['visitDate'] as String? ?? '';
-        final String bDate = b['visitDate'] as String? ?? '';
-        final int dateCompare = aDate.compareTo(bDate);
-        if (dateCompare != 0) return dateCompare;
-        final String aTime = a['addedAt'] as String? ?? '';
-        final String bTime = b['addedAt'] as String? ?? '';
-        return aTime.compareTo(bTime);
-      });
-      for (int i = 0; i < points.length - 1; i++) {
-        final double startLat = _toDouble(points[i]['lat'])!;
-        final double startLng = _toDouble(points[i]['lng'])!;
-        final double endLat = _toDouble(points[i + 1]['lat'])!;
-        final double endLng = _toDouble(points[i + 1]['lng'])!;
-        markers.add(
-          Marker(
-            point: LatLng((startLat + endLat) / 2, (startLng + endLng) / 2),
-            width: 28,
-            height: 28,
-            child: Transform.rotate(
-              angle: math.atan2(endLng - startLng, endLat - startLat),
-              child: Icon(
-                Icons.arrow_forward_rounded,
-                color: color,
-                size: 24,
-              ),
-            ),
-          ),
-        );
-      }
-    }
-    return markers;
-  }
-
   static double? _toDouble(dynamic value) {
     if (value == null) return null;
     if (value is double) return value;
@@ -274,9 +229,7 @@ class _MapPageState extends State<MapPage> {
         _nearbyPlaces = nearby;
         _queryingNearby = false;
         _nearbyMessage = nearby.isEmpty ? '这个位置附近暂时没有找到合适地点。' : null;
-        if (nearby.isNotEmpty) {
-          _selected = nearby.first;
-        }
+        _selected = null;
       });
     } catch (_) {
       if (!mounted) return;
@@ -299,7 +252,7 @@ class _MapPageState extends State<MapPage> {
   Future<void> _toggleLike(Map<String, dynamic> place) async {
     final String name = place['name'] as String? ?? '';
     if (name.isEmpty) return;
-    await HistoryService.toggleLike(name);
+    await HistoryService.toggleLike(name, placeData: place);
     final List<String> likedNames = await HistoryService.getLiked();
     if (!mounted) return;
     setState(() => _likedNames = likedNames);
@@ -324,12 +277,20 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
+  void _resetToInitialView() {
+    setState(() {
+      _tapPoint = null;
+      _nearbyPlaces = <Map<String, dynamic>>[];
+      _nearbyMessage = null;
+      _selected = null;
+    });
+    _mapController.move(_chinaCenter, _defaultZoom);
+  }
+
   @override
   Widget build(BuildContext context) {
     final List<Map<String, dynamic>> scheduledStops = _scheduledStops;
     final List<Polyline> polylines = _schedulePolylines;
-    final List<Marker> arrowMarkers = _scheduleArrowMarkers;
-
     return Scaffold(
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -353,7 +314,6 @@ class _MapPageState extends State<MapPage> {
                       maxZoom: 18,
                     ),
                     if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
-                    if (arrowMarkers.isNotEmpty) MarkerLayer(markers: arrowMarkers),
                     MarkerLayer(
                       markers: scheduledStops.map((Map<String, dynamic> stop) {
                         final Color color = Color(stop['routeColor'] as int);
@@ -415,56 +375,7 @@ class _MapPageState extends State<MapPage> {
                   ],
                 ),
                 Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    color: Colors.white.withAlpha(236),
-                    child: SafeArea(
-                      bottom: false,
-                      child: Column(
-                        children: <Widget>[
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                            child: Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF6F9FC),
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                              child: Row(
-                                children: <Widget>[
-                                  Container(
-                                    width: 40,
-                                    height: 40,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF16324F),
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                    child: const Icon(Icons.touch_app_outlined, color: Colors.white),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      '点击地图任意位置，用高德 API 查询附近地点。地图只展示已加入行程的地点，路线会按时间顺序用同色箭头连接。',
-                                      style: TextStyle(
-                                        height: 1.35,
-                                        color: Colors.blueGrey[700],
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 126,
+                  top: 16,
                   right: 16,
                   child: SafeArea(
                     child: Column(
@@ -542,6 +453,17 @@ class _MapPageState extends State<MapPage> {
                             child: const Icon(Icons.close),
                           ),
                         ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: FloatingActionButton.small(
+                          heroTag: 'reset-initial-view',
+                          onPressed: _resetToInitialView,
+                          backgroundColor: Colors.white,
+                          foregroundColor: const Color(0xFF16324F),
+                          tooltip: '返回初始视图',
+                          child: const Icon(Icons.my_location_outlined),
+                        ),
+                      ),
                       Padding(
                         padding: const EdgeInsets.only(bottom: 10),
                         child: FloatingActionButton.small(

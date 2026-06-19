@@ -165,6 +165,48 @@ class AmapService {
         .toList();
   }
 
+  static Future<List<Map<String, dynamic>>> searchPlaces({
+    required String apiKey,
+    required String query,
+    String? city,
+    int pageSize = 20,
+  }) async {
+    final String keyword = query.trim();
+    if (keyword.isEmpty) return <Map<String, dynamic>>[];
+
+    final Map<String, String> params = <String, String>{
+      'key': apiKey,
+      'keywords': keyword,
+      'extensions': 'all',
+      'output': 'json',
+      'offset': pageSize.clamp(1, 25).toString(),
+      'page': '1',
+    };
+    if (city != null && city.trim().isNotEmpty) {
+      params['city'] = city.trim();
+    }
+
+    final Uri uri = Uri.parse(_baseUrl).replace(queryParameters: params);
+    final http.Response response =
+        await http.get(uri).timeout(const Duration(seconds: 12));
+    if (response.statusCode != 200) return <Map<String, dynamic>>[];
+
+    final Map<String, dynamic> body =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    if (body['status'] != '1') return <Map<String, dynamic>>[];
+
+    final List<dynamic> pois = body['pois'] as List<dynamic>? ?? <dynamic>[];
+    return pois
+        .asMap()
+        .entries
+        .map((MapEntry<int, dynamic> entry) => _parseSearchPoi(
+              entry.value as Map<String, dynamic>,
+              entry.key,
+            ))
+        .whereType<Map<String, dynamic>>()
+        .toList();
+  }
+
   static Future<List<Map<String, dynamic>>> _fetchCity({
     required String apiKey,
     required String city,
@@ -453,6 +495,71 @@ class AmapService {
     if (lower.contains('餐')) return '1–2 小时';
     if (cost > 100) return '半天';
     return '1–3 小时';
+  }
+
+  static Map<String, dynamic>? _parseSearchPoi(
+    Map<String, dynamic> poi,
+    int fallbackIndex,
+  ) {
+    final String name = poi['name'] as String? ?? '';
+    if (name.isEmpty) return null;
+
+    final String city = poi['cityname'] as String? ?? '';
+    final String district = poi['adname'] as String? ?? '';
+    final String address = poi['address'] as String? ?? '';
+    final String displayLocation = district.isNotEmpty
+        ? '${city.isNotEmpty ? '$city · ' : ''}$district'
+        : (city.isNotEmpty ? city : address);
+
+    double? lat;
+    double? lng;
+    final String coordStr = poi['location'] as String? ?? '';
+    if (coordStr.contains(',')) {
+      final List<String> parts = coordStr.split(',');
+      if (parts.length == 2) {
+        lng = double.tryParse(parts[0].trim());
+        lat = double.tryParse(parts[1].trim());
+      }
+    }
+    if (lat == null || lng == null) return null;
+
+    final String ratingStr = poi['rating'] as String? ?? '';
+    final double rawRating =
+        double.tryParse(ratingStr) ?? (4.0 + (name.hashCode.abs() % 8) * 0.1);
+    final double rating =
+        double.parse(rawRating.clamp(3.8, 5.0).toStringAsFixed(1));
+
+    final String costStr = poi['cost'] as String? ?? '';
+    final double cost = double.tryParse(costStr) ?? 0;
+    final List<dynamic> photos = poi['photos'] as List<dynamic>? ?? <dynamic>[];
+    String imgUrl = '';
+    if (photos.isNotEmpty) {
+      imgUrl =
+          (photos.first as Map<String, dynamic>)['url'] as String? ?? '';
+    }
+    if (imgUrl.startsWith('http://')) {
+      imgUrl = imgUrl.replaceFirst('http://', 'https://');
+    }
+
+    final String type = poi['type'] as String? ?? '';
+    final List<String> tags = _guessTags(type, cost);
+
+    return <String, dynamic>{
+      'name': name,
+      'img': imgUrl.isNotEmpty
+          ? imgUrl
+          : 'assets/${(fallbackIndex % 5) + 1}.jpeg',
+      'price': _cityStay[city] ?? '¥200–500/晚',
+      'budget': cost > 0 ? '¥$costStr/人' : '免费',
+      'duration': _estimateNearbyDuration(type, cost),
+      'rating': rating,
+      'tags': tags,
+      'location': displayLocation,
+      'details':
+          '$name${displayLocation.isNotEmpty ? '位于$displayLocation' : ''}${address.isNotEmpty ? '，地址为$address' : ''}。',
+      'lat': lat,
+      'lng': lng,
+    };
   }
 
 }

@@ -90,12 +90,14 @@ class _ItineraryPageState extends State<ItineraryPage> {
 
   @override
   Widget build(BuildContext context) {
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool compact = screenWidth < 390;
     return Scaffold(
       backgroundColor: const Color(0xFFF3F6FA),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showCreateDialog,
         icon: const Icon(Icons.add),
-        label: const Text('新建行程'),
+        label: Text(compact ? '新建' : '新建行程'),
         backgroundColor: const Color(0xFF16324F),
         foregroundColor: Colors.white,
       ),
@@ -106,7 +108,7 @@ class _ItineraryPageState extends State<ItineraryPage> {
               child: CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: <Widget>[
-                  SliverToBoxAdapter(child: _buildHero()),
+                  SliverToBoxAdapter(child: _buildHero(compact)),
                   if (_itineraries.isEmpty)
                     SliverFillRemaining(
                       hasScrollBody: false,
@@ -152,12 +154,17 @@ class _ItineraryPageState extends State<ItineraryPage> {
     );
   }
 
-  Widget _buildHero() {
+  Widget _buildHero(bool compact) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-      padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      padding: EdgeInsets.fromLTRB(
+        compact ? 18 : 20,
+        compact ? 20 : 22,
+        compact ? 18 : 20,
+        compact ? 18 : 20,
+      ),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(24),
         gradient: const LinearGradient(
           colors: <Color>[Color(0xFF16324F), Color(0xFF2C6E63)],
           begin: Alignment.topLeft,
@@ -180,19 +187,19 @@ class _ItineraryPageState extends State<ItineraryPage> {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.14),
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(16),
                 ),
                 child: const Icon(Icons.event_note, color: Colors.white),
               ),
               const SizedBox(width: 14),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
                       '行程',
                       style: TextStyle(
-                        fontSize: 26,
+                        fontSize: compact ? 22 : 24,
                         fontWeight: FontWeight.w800,
                         color: Colors.white,
                       ),
@@ -207,28 +214,25 @@ class _ItineraryPageState extends State<ItineraryPage> {
               ),
             ],
           ),
-          const SizedBox(height: 22),
-          Row(
+          SizedBox(height: compact ? 18 : 20),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
             children: <Widget>[
-              Expanded(
-                child: _HeroMetric(
-                  label: '行程数',
-                  value: '${_itineraries.length}',
-                ),
+              _HeroMetric(
+                label: '行程数',
+                value: '${_itineraries.length}',
+                compact: compact,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _HeroMetric(
-                  label: 'Places',
-                  value: '$_totalPlaces',
-                ),
+              _HeroMetric(
+                label: '地点数',
+                value: '$_totalPlaces',
+                compact: compact,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _HeroMetric(
-                  label: 'Days',
-                  value: '$_activeDays',
-                ),
+              _HeroMetric(
+                label: '天数',
+                value: '$_activeDays',
+                compact: compact,
               ),
             ],
           ),
@@ -289,18 +293,27 @@ class _ItineraryPageState extends State<ItineraryPage> {
 }
 
 class _HeroMetric extends StatelessWidget {
-  const _HeroMetric({required this.label, required this.value});
+  const _HeroMetric({
+    required this.label,
+    required this.value,
+    required this.compact,
+  });
 
   final String label;
   final String value;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      width: compact ? 92 : 104,
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 12 : 14,
+        vertical: compact ? 12 : 14,
+      ),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -318,7 +331,7 @@ class _HeroMetric extends StatelessWidget {
             value,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -360,6 +373,8 @@ class _ScheduleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool compact = screenWidth < 390;
     final List<dynamic> places = itinerary['places'] as List<dynamic>;
     final int days = _days();
     final Map<String, dynamic>? firstPlace =
@@ -374,17 +389,17 @@ class _ScheduleCard extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(28),
+      borderRadius: BorderRadius.circular(22),
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.all(compact ? 16 : 18),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(22),
           boxShadow: const <BoxShadow>[
             BoxShadow(
               color: Color(0x0F16324F),
-              blurRadius: 24,
-              offset: Offset(0, 14),
+              blurRadius: 18,
+              offset: Offset(0, 10),
             ),
           ],
         ),
@@ -394,11 +409,11 @@ class _ScheduleCard extends StatelessWidget {
             Row(
               children: <Widget>[
                 Container(
-                  width: 52,
-                  height: 52,
+                  width: compact ? 44 : 48,
+                  height: compact ? 44 : 48,
                   decoration: BoxDecoration(
                     color: const Color(0xFFEBF2F8),
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                   child: const Icon(
                     Icons.route_rounded,
@@ -413,10 +428,12 @@ class _ScheduleCard extends StatelessWidget {
                       Text(
                         itinerary['name'] as String,
                         style: const TextStyle(
-                          fontSize: 18,
+                          fontSize: 16,
                           fontWeight: FontWeight.w800,
                           color: Color(0xFF16324F),
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -432,11 +449,12 @@ class _ScheduleCard extends StatelessWidget {
                 ),
                 IconButton(
                   onPressed: onDelete,
+                  visualDensity: VisualDensity.compact,
                   icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -447,12 +465,12 @@ class _ScheduleCard extends StatelessWidget {
               ],
             ),
             if (firstPlace != null) ...<Widget>[
-              const SizedBox(height: 18),
+              const SizedBox(height: 14),
               Container(
-                padding: const EdgeInsets.all(14),
+                padding: EdgeInsets.all(compact ? 12 : 14),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF7FAFD),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(16),
                 ),
                 child: Row(
                   children: <Widget>[
@@ -474,9 +492,12 @@ class _ScheduleCard extends StatelessWidget {
                           Text(
                             firstPlace['name'] as String? ?? '',
                             style: const TextStyle(
+                              fontSize: 13,
                               fontWeight: FontWeight.w700,
                               color: Color(0xFF16324F),
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 2),
                           Text(

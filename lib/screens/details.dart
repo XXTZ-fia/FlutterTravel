@@ -73,7 +73,7 @@ class _DetailsState extends State<Details> {
 
   Future<void> _toggleLike() async {
     final String name = widget.place['name'] as String;
-    await HistoryService.toggleLike(name);
+    await HistoryService.toggleLike(name, placeData: Map<String, dynamic>.from(widget.place));
     if (mounted) setState(() => _isLiked = !_isLiked);
   }
 

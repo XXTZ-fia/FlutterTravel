@@ -14,6 +14,8 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _page = 0;
+  final GlobalKey<LikedPlacesPageState> _likedPageKey =
+      GlobalKey<LikedPlacesPageState>();
   late final List<Widget> _screens;
 
   @override
@@ -23,17 +25,23 @@ class _MainScreenState extends State<MainScreen> {
       DiscoverPage(),
       ItineraryPage(),
       MapPage(),
-      LikedPlacesPage(),
       ProfilePage(),
     ];
   }
 
   @override
   Widget build(BuildContext context) {
+    final List<Widget> screens = <Widget>[
+      _screens[0],
+      _screens[1],
+      _screens[2],
+      LikedPlacesPage(key: _likedPageKey),
+      _screens[3],
+    ];
     return Scaffold(
       body: IndexedStack(
         index: _page,
-        children: _screens,
+        children: screens,
       ),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
@@ -72,6 +80,9 @@ class _MainScreenState extends State<MainScreen> {
     setState(() {
       _page = page;
     });
+    if (page == 3) {
+      _likedPageKey.currentState?.refreshLikedPlaces();
+    }
   }
 
   @override

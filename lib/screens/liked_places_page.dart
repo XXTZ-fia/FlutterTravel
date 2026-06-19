@@ -5,13 +5,15 @@ import 'package:flutter_travel/util/history_service.dart';
 import 'package:flutter_travel/widgets/app_image.dart';
 
 class LikedPlacesPage extends StatefulWidget {
-  const LikedPlacesPage({super.key});
+  const LikedPlacesPage({super.key, this.onStateChanged});
+
+  final ValueChanged<int>? onStateChanged;
 
   @override
-  State<LikedPlacesPage> createState() => _LikedPlacesPageState();
+  State<LikedPlacesPage> createState() => LikedPlacesPageState();
 }
 
-class _LikedPlacesPageState extends State<LikedPlacesPage> {
+class LikedPlacesPageState extends State<LikedPlacesPage> {
   List<Map<String, dynamic>> _likedPlaces = <Map<String, dynamic>>[];
   bool _loading = true;
 
@@ -25,13 +27,25 @@ class _LikedPlacesPageState extends State<LikedPlacesPage> {
     final List<dynamic> results = await Future.wait(<Future<dynamic>>[
       HistoryService.getLiked(),
       DestinationRepository.getFastDestinations(),
+      HistoryService.getLikedPlacesData(),
     ]);
     final List<String> likedNames = results[0] as List<String>;
     final List<Map<String, dynamic>> allPlaces =
         results[1] as List<Map<String, dynamic>>;
+    final List<Map<String, dynamic>> extraPlaces =
+        results[2] as List<Map<String, dynamic>>;
     final List<Map<String, dynamic>> liked = allPlaces
         .where((Map<String, dynamic> place) => likedNames.contains(place['name']))
         .toList();
+    final Set<String> foundNames =
+        liked.map((Map<String, dynamic> p) => p['name'] as String).toSet();
+    for (final Map<String, dynamic> extra in extraPlaces) {
+      final String? name = extra['name'] as String?;
+      if (name != null && likedNames.contains(name) && !foundNames.contains(name)) {
+        liked.add(extra);
+        foundNames.add(name);
+      }
+    }
     liked.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
       return likedNames.indexOf(a['name'] as String)
           .compareTo(likedNames.indexOf(b['name'] as String));
@@ -41,11 +55,23 @@ class _LikedPlacesPageState extends State<LikedPlacesPage> {
       _likedPlaces = liked;
       _loading = false;
     });
+    widget.onStateChanged?.call(_likedPlaces.length);
   }
 
   Future<void> _removeLike(Map<String, dynamic> place) async {
     await HistoryService.toggleLike(place['name'] as String);
-    _load();
+    if (!mounted) return;
+    setState(() {
+      _likedPlaces.removeWhere((Map<String, dynamic> item) => item['name'] == place['name']);
+    });
+    widget.onStateChanged?.call(_likedPlaces.length);
+    await _load();
+  }
+
+  Future<void> refreshLikedPlaces() async {
+    if (!mounted) return;
+    setState(() => _loading = true);
+    await _load();
   }
 
   @override
@@ -102,13 +128,15 @@ class _LikedPlacesPageState extends State<LikedPlacesPage> {
                     itemBuilder: (BuildContext context, int index) {
                       final Map<String, dynamic> place = _likedPlaces[index];
                       return InkWell(
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => Details(
-                              place: Map<String, dynamic>.from(place),
-                            ),
-                          ),
-                        ),
+                        onTap: () => Navigator.of(context)
+                            .push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => Details(
+                                  place: Map<String, dynamic>.from(place),
+                                ),
+                              ),
+                            )
+                            .then((_) => refreshLikedPlaces()),
                         borderRadius: BorderRadius.circular(20),
                         child: Container(
                           padding: const EdgeInsets.all(12),

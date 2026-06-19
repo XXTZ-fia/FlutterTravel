@@ -5,6 +5,7 @@ import 'package:flutter_travel/util/user_scope.dart';
 class HistoryService {
   static const String _keyViewed = 'history_viewed';
   static const String _keyLiked = 'history_liked';
+  static const String _keyLikedPlacesData = 'history_liked_places_data';
   static const int _maxHistory = 20;
 
   static Future<void> recordView(String name) async {
@@ -17,16 +18,39 @@ class HistoryService {
     await prefs.setString(key, jsonEncode(history));
   }
 
-  static Future<void> toggleLike(String name) async {
+  static Future<void> toggleLike(String name, {Map<String, dynamic>? placeData}) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final List<String> liked = await getLiked();
+    final String key = await UserScope.key(_keyLiked);
+    final String dataKey = await UserScope.key(_keyLikedPlacesData);
     if (liked.contains(name)) {
       liked.remove(name);
+      final List<Map<String, dynamic>> stored = await getLikedPlacesData();
+      stored.removeWhere((Map<String, dynamic> p) => p['name'] == name);
+      await prefs.setString(dataKey, jsonEncode(stored));
     } else {
       liked.add(name);
+      if (placeData != null) {
+        final List<Map<String, dynamic>> stored = await getLikedPlacesData();
+        stored.removeWhere((Map<String, dynamic> p) => p['name'] == name);
+        stored.add(placeData);
+        await prefs.setString(dataKey, jsonEncode(stored));
+      }
     }
-    final String key = await UserScope.key(_keyLiked);
     await prefs.setString(key, jsonEncode(liked));
+  }
+
+  static Future<List<Map<String, dynamic>>> getLikedPlacesData() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String dataKey = await UserScope.key(_keyLikedPlacesData);
+    final String? raw = prefs.getString(dataKey);
+    if (raw == null) return <Map<String, dynamic>>[];
+    try {
+      final List<dynamic> list = jsonDecode(raw) as List<dynamic>;
+      return list.map((dynamic e) => Map<String, dynamic>.from(e as Map)).toList();
+    } catch (_) {
+      return <Map<String, dynamic>>[];
+    }
   }
 
   static Future<bool> isLiked(String name) async {
