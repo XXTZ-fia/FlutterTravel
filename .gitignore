@@ -30,6 +30,7 @@
 
 # AI assistant local data
 .claude/
+.metadata
 
 # Unused platforms (Android only project)
 /ios/
